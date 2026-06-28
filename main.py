@@ -37,8 +37,6 @@ http_client: httpx.AsyncClient | None = None
 LINKS: dict = {}
 LINKS_LOCK = asyncio.Lock()
 
-# ❌ لیست عمومی و سراسری CUSTOM_ADDRESSES کاملاً حذف شد.
-
 SESSION_COOKIE = "ren_session"
 SESSION_TTL = 60 * 60 * 24 * 7
 
@@ -127,7 +125,7 @@ async def ensure_default_link():
                 "max_connections": 0, 
                 "created_at": datetime.now().isoformat(), 
                 "active": True,
-                "addresses": [] # اضافه شدن لیست آی‌پی به هر اینباند
+                "addresses": []
             }
 
 def get_client_ip(websocket: WebSocket) -> str:
@@ -155,7 +153,7 @@ async def close_connections_for_link(uid: str):
         connection_sockets.pop(cid, None)
     link_ip_map.pop(uid, None)
 
-# --- نمونه‌سازی FastAPI بعد از تعاریف اولیه برای جلوگیری از خطای NameError ---
+# --- FastAPI Initialization ---
 app = FastAPI(title="REN", docs_url=None, redoc_url=None)
 
 app.add_middleware(
@@ -252,8 +250,6 @@ async def get_stats(_=Depends(require_auth)):
         "hourly_traffic": dict(hourly_traffic),
     }
 
-# --- 🎯 مدیریت اختصاصی اینباندها و آی‌پی‌های تمیز هر کاربر ---
-
 @app.post("/api/links")
 async def create_link(request: Request, _=Depends(require_auth)):
     body = await request.json()
@@ -270,9 +266,12 @@ async def create_link(request: Request, _=Depends(require_auth)):
     limit_bytes = 0 if limit_value <= 0 else parse_size_to_bytes(limit_value, limit_unit)
     max_conn = int(body.get("max_connections") or 0)
     
-    # ✅ گرفتن لیست آی‌پی‌های ارسال شده مخصوص این اینباند از بدنه درخواست (Add Inbound)
-    raw_addresses = body.get("addresses") or []
-    clean_addresses = [str(addr).strip() for addr in raw_addresses if str(addr).strip()]
+    # تفکیک آدرس‌ها بر اساس خط یا ویرگول در اینباند
+    raw_addresses = body.get("addresses") or ""
+    if isinstance(raw_addresses, list):
+        clean_addresses = [str(a).strip() for a in raw_addresses if str(a).strip()]
+    else:
+        clean_addresses = [str(a).strip() for a in re.split(r'[\n,]+', str(raw_addresses)) if str(a).strip()]
 
     uid = label
     async with LINKS_LOCK:
@@ -283,7 +282,7 @@ async def create_link(request: Request, _=Depends(require_auth)):
             "max_connections": max_conn, 
             "created_at": datetime.now().isoformat(), 
             "active": True,
-            "addresses": clean_addresses # ذخیره اختصاصی آی‌پی‌ها برای همین کاربر
+            "addresses": clean_addresses
         }
     return {"uuid": uid, "label": label, "ok": True}
 
@@ -301,7 +300,7 @@ async def list_links(_=Depends(require_auth)):
                 "active": data["active"], 
                 "created_at": data["created_at"], 
                 "current_connections": count_connections_for_link(uid), 
-                "addresses": data.get("addresses", []), # برگرداندن آی‌پی‌های اختصاصی به جدول فرانت‌انـد
+                "addresses": data.get("addresses", []),
                 "vless_link": generate_vless_link(uid, remark=f"REN-{data['label']}")
             })
     result.sort(key=lambda x: x["created_at"], reverse=True)
@@ -323,10 +322,12 @@ async def toggle_link(uid: str, request: Request, _=Depends(require_auth)):
             LINKS[uid]["used_bytes"] = 0
         if "max_connections" in body:
             LINKS[uid]["max_connections"] = max(0, int(body["max_connections"] or 0))
-        # ✅ امکان ویرایش و به‌روزرسانی آی‌پی‌های اختصاصی این کاربر
         if "addresses" in body:
-            raw_addresses = body.get("addresses") or []
-            LINKS[uid]["addresses"] = [str(addr).strip() for addr in raw_addresses if str(addr).strip()]
+            raw_addresses = body.get("addresses") or ""
+            if isinstance(raw_addresses, list):
+                LINKS[uid]["addresses"] = [str(a).strip() for a in raw_addresses if str(a).strip()]
+            else:
+                LINKS[uid]["addresses"] = [str(a).strip() for a in re.split(r'[\n,]+', str(raw_addresses)) if str(a).strip()]
             
     return {"ok": True}
 
@@ -337,7 +338,6 @@ async def delete_link(uid: str, _=Depends(require_auth)):
     await close_connections_for_link(uid)
     return {"ok": True}
 
-# --- خروجی سابسکریپشن بر اساس آی‌پی‌های اختصاصی هر کاربر ---
 @app.get("/sub/{uid}")
 async def subscription_endpoint(uid: str):
     async with LINKS_LOCK:
@@ -348,9 +348,7 @@ async def subscription_endpoint(uid: str):
     if not link["active"]:
         raise HTTPException(status_code=403, detail="link disabled")
         
-    # ✅ لود کردن آی‌پی‌های تمیز اختصاصی مربوط به همین اینباند
     addresses = link.get("addresses", [])
-    
     sub_links = []
     server_link = generate_vless_link(uid, remark=f"REN-{link['label']}-Server")
     sub_links.append(server_link)
@@ -370,9 +368,7 @@ async def subscription_endpoint(uid: str):
     }
     return Response(content=encoded, headers=headers)
 
-# ❌ تمام متدهای مربوط به مدیریت آدرس‌های سراسری قدیم کاملاً حذف شدند.
-
-# --- هسته اصلی WebSocket و پروکسی تانل (بدون کوچکترین تغییر) ---
+# --- Core VLESS Tunneling ---
 RELAY_BUF = 64 * 1024
 
 async def parse_vless_header(first_chunk: bytes):
@@ -506,9 +502,280 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
                     if not any(c.get("uuid") == uid and c.get("ip") == ip for c in connections.values()):
                         remove_ip_from_link(uid, ip)
 
-# --- قالب‌های قالب‌بندی فرانت‌اند (به صورت دست‌نخورده جهت جاگذاری کدهای اصلی شما) ---
-LOGIN_HTML = r"""<!-- کدهای HTML صفحه لاگین اصلی شما -->"""
-DASHBOARD_HTML = r"""<!-- کدهای HTML صفحه داشبورد اصلی شما -->"""
+# --- Full Web UI Templates ---
+LOGIN_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>REN Gateway - Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; margin: 0; padding: 0; }
+        body { background: #0b0f19; color: #f3f4f6; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        .card { background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 40px; width: 100%; max-width: 420px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
+        h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: #fff; text-align: center; letter-spacing: -0.5px; }
+        p { color: #9ca3af; font-size: 14px; text-align: center; margin-bottom: 32px; }
+        .group { margin-bottom: 24px; }
+        label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 8px; color: #9ca3af; }
+        input { width: 100%; background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 12px 16px; color: #fff; font-size: 15px; outline: none; transition: border 0.2s; }
+        input:focus { border-color: #3b82f6; }
+        button { width: 100%; background: #3b82f6; color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s; margin-top: 8px; }
+        button:hover { background: #2563eb; }
+        .error { color: #ef4444; font-size: 13px; text-align: center; margin-top: 16px; min-height: 20px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>REN Gateway</h1>
+        <p>Sign in to manage your core edge gateway</p>
+        <div class="group">
+            <label>Admin Password</label>
+            <input type="password" id="pw" placeholder="••••••••" onkeydown="if(event.key==='Enter') login()">
+        </div>
+        <button onclick="login()">Sign In</button>
+        <div class="error" id="err"></div>
+    </div>
+    <script>
+        async function login() {
+            const p = document.getElementById('pw').value;
+            const err = document.getElementById('err');
+            err.textContent = '';
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({password: p})
+                });
+                const d = await res.json();
+                if(res.ok && d.ok) { window.location.href = '/dashboard'; }
+                else { err.textContent = d.detail || 'Login failed'; }
+            } catch { err.textContent = 'Connection error'; }
+        }
+        window.onload = async () => {
+            const res = await fetch('/api/me');
+            const d = await res.json();
+            if(d.authenticated) window.location.href = '/dashboard';
+        };
+    </script>
+</body>
+</html>
+"""
+
+DASHBOARD_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>REN Gateway - Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; margin: 0; padding: 0; }
+        body { background: #0b0f19; color: #f3f4f6; padding: 40px 20px; min-height: 100vh; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+        h1 { font-size: 26px; font-weight: 700; color: #fff; }
+        .btn { background: #1f2937; color: #fff; border: 1px solid #374151; border-radius: 8px; padding: 8px 16px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; text-decoration: none; display: inline-flex; align-items: center; }
+        .btn:hover { background: #374151; }
+        .btn-primary { background: #3b82f6; border-color: #3b82f6; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-danger { background: #ef4444; border-color: #ef4444; }
+        .btn-danger:hover { background: #dc2626; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 40px; }
+        .stat-card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 24px; }
+        .stat-label { font-size: 13px; color: #9ca3af; font-weight: 500; margin-bottom: 6px; }
+        .stat-val { font-size: 24px; font-weight: 700; color: #fff; }
+
+        .section { background: #111827; border: 1px solid #1f2937; border-radius: 14px; padding: 28px; margin-bottom: 30px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .section-title { font-size: 18px; font-weight: 600; color: #fff; }
+
+        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; align-items: flex-end; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label { font-size: 12px; font-weight: 500; color: #9ca3af; margin-bottom: 6px; }
+        .form-group input, .form-group select { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 10px 14px; color: #fff; font-size: 14px; outline: none; }
+        .form-group textarea { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 10px 14px; color: #fff; font-size: 14px; outline: none; resize: vertical; height: 41px; }
+
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { font-size: 12px; text-transform: uppercase; color: #9ca3af; font-weight: 600; padding: 12px 16px; border-bottom: 1px solid #1f2937; }
+        td { padding: 16px; border-bottom: 1px solid #1f2937; font-size: 14px; color: #e5e7eb; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        
+        .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
+        .badge-success { background: rgba(16,185,129,0.1); color: #10b981; }
+        .badge-muted { background: rgba(156,163,175,0.1); color: #9ca3af; }
+
+        .code-box { background: #1f2937; border: 1px solid #374151; padding: 6px 10px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #3b82f6; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .actions { display: flex; gap: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>REN Management Console</h1>
+            <button class="btn" onclick="logout()">Sign Out</button>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-label">Active Connections</div><div class="stat-val" id="st-conn">0</div></div>
+            <div class="stat-card"><div class="stat-label">Total Data Forwarded</div><div class="stat-val" id="st-data">0 MB</div></div>
+            <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-val" id="st-req">0</div></div>
+            <div class="stat-card"><div class="stat-label">System Uptime</div><div class="stat-val" id="st-uptime">00:00:00</div></div>
+        </div>
+
+        <!-- Add Inbound Form -->
+        <div class="section">
+            <div class="section-title" style="margin-bottom:20px;">Add New Inbound Link</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Name / Label</label>
+                    <input type="text" id="ln-label" placeholder="e.g. User-A">
+                </div>
+                <div class="form-group">
+                    <label>Data Limit</label>
+                    <input type="number" id="ln-limit" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Unit</label>
+                    <select id="ln-unit"><option>GB</option><option>MB</option></select>
+                </div>
+                <div class="form-group">
+                    <label>Max Connections (0=unlimited)</label>
+                    <input type="number" id="ln-conn" value="0" min="0">
+                </div>
+                <!-- 🎯 بخش آی‌پی تمیز اختصاصی به ازای هر اینباند اضافه شده در اینجا -->
+                <div class="form-group">
+                    <label>Clean IPs (Comma / New line separated)</label>
+                    <textarea id="ln-ips" placeholder="104.16.0.1, clean.com"></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="createLink()">Create Inbound</button>
+            </div>
+        </div>
+
+        <!-- Inbound Links Table -->
+        <div class="section" style="padding: 16px 0;">
+            <div class="section-header" style="padding: 0 28px 12px 28px;">
+                <div class="section-title">Inbound Connections</div>
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Label</th>
+                            <th>Status</th>
+                            <th>Traffic (Used / Limit)</th>
+                            <th>Active Conns</th>
+                            <th>Clean IPs Count</th>
+                            <th>Subscription Config</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="links-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function formatBytes(b) {
+            if(b === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(b) / Math.log(k));
+            return parseFloat((b / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        async function req(url, method='GET', body=null) {
+            const opt = { method, headers: {} };
+            if(body) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+            const res = await fetch(url, opt);
+            if(res.status === 401) { window.location.href = '/login'; return null; }
+            return res.json();
+        }
+
+        async function logout() {
+            await fetch('/api/logout', {method: 'POST'});
+            window.location.href = '/login';
+        }
+
+        async function loadStats() {
+            const d = await req('/stats');
+            if(!d) return;
+            document.getElementById('st-conn').textContent = d.active_connections;
+            document.getElementById('st-data').textContent = d.total_traffic_mb >= 1024 ? (d.total_traffic_mb/1024).toFixed(2)+' GB' : d.total_traffic_mb+' MB';
+            document.getElementById('st-req').textContent = d.total_requests;
+            document.getElementById('st-uptime').textContent = d.uptime;
+        }
+
+        async function loadLinks() {
+            const d = await req('/api/links');
+            if(!d) return;
+            const tbody = document.getElementById('links-tbody');
+            tbody.innerHTML = '';
+            d.links.forEach(l => {
+                const limitStr = l.limit_bytes === 0 ? 'Unlimited' : formatBytes(l.limit_bytes);
+                const subUrl = window.location.origin + '/sub/' + l.uuid;
+                const ipCount = l.addresses ? l.addresses.length : 0;
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-weight:600; color:#fff;">${l.label}</td>
+                    <td><span class="badge ${l.active ? 'badge-success':'badge-muted'}">${l.active ? 'Active':'Disabled'}</span></td>
+                    <td>${formatBytes(l.used_bytes)} / ${limitStr}</td>
+                    <td>${l.current_connections} / ${l.max_connections === 0 ? '∞' : l.max_connections}</td>
+                    <td><span class="badge badge-muted">${ipCount} IPs</span></td>
+                    <td><div class="code-box" onclick="navigator.clipboard.writeText('${subUrl}'); alert('Copied Link!');" style="cursor:pointer;">${subUrl}</div></td>
+                    <td class="actions">
+                        <button class="btn" style="padding:4px 10px;" onclick="toggleLink('${l.uuid}', ${!l.active})">${l.active ? 'Disable':'Enable'}</button>
+                        <button class="btn btn-danger" style="padding:4px 10px;" onclick="deleteLink('${l.uuid}')">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function createLink() {
+            const label = document.getElementById('ln-label').value;
+            const val = parseFloat(document.getElementById('ln-limit').value);
+            const unit = document.getElementById('ln-unit').value;
+            const conn = parseInt(document.getElementById('ln-conn').value);
+            const ips = document.getElementById('ln-ips').value;
+
+            if(!label) return alert('Label is required');
+            const res = await req('/api/links', 'POST', {
+                label, limit_value: val, limit_unit: unit, max_connections: conn, addresses: ips
+            });
+            if(res && res.ok) {
+                document.getElementById('ln-label').value = '';
+                document.getElementById('ln-ips').value = '';
+                loadLinks();
+            } else if(res) { alert(res.detail || 'Error creating link'); }
+        }
+
+        async function toggleLink(uid, state) {
+            await req('/api/links/'+uid, 'PATCH', {active: state});
+            loadLinks();
+        }
+
+        async function deleteLink(uid) {
+            if(confirm('Delete inbound?')) {
+                await req('/api/links/'+uid, 'DELETE');
+                loadLinks();
+            }
+        }
+
+        window.onload = () => {
+            loadStats(); loadLinks();
+            setInterval(loadStats, 3000);
+            setInterval(loadLinks, 5000);
+        };
+    </script>
+</body>
+</html>
+"""
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=CONFIG["port"], reload=True)
