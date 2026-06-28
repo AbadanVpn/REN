@@ -46,8 +46,6 @@ http_client: httpx.AsyncClient | None = None
 LINKS: dict = {}
 LINKS_LOCK = asyncio.Lock()
 
-CUSTOM_ADDRESSES: list = ["www.speedtest.net"]
-CUSTOM_ADDRESSES_LOCK = asyncio.Lock()
 
 SESSION_COOKIE = "ren_session"
 SESSION_TTL = 60 * 60 * 24 * 7
@@ -153,7 +151,7 @@ def parse_size_to_bytes(value: float, unit: str) -> int:
 async def ensure_default_link():
     async with LINKS_LOCK:
         if not LINKS:
-            LINKS["Default"] = {"label": "Default", "limit_bytes": 0, "used_bytes": 0, "max_connections": 0, "created_at": datetime.now().isoformat(), "active": True}
+            LINKS["Default"] = {"label":"پیش‌فرض","limit_bytes":0,"used_bytes":0,"max_connections":0,"addresses":["www.speedtest.net"],"created_at":datetime.now().isoformat(),"active":True}
 
 def get_client_ip(websocket: WebSocket) -> str:
     forwarded = websocket.headers.get("x-forwarded-for")
@@ -266,11 +264,12 @@ async def create_link(request: Request, _=Depends(require_auth)):
     limit_unit = body.get("limit_unit") or "GB"
     limit_bytes = 0 if limit_value <= 0 else parse_size_to_bytes(limit_value, limit_unit)
     max_conn = int(body.get("max_connections") or 0)
+    addresses=[str(a).strip() for a in (body.get("addresses") or []) if str(a).strip()]
     if max_conn < 0:
         max_conn = 0
     uid = label
     async with LINKS_LOCK:
-        LINKS[uid] = {"label": label, "limit_bytes": limit_bytes, "used_bytes": 0, "max_connections": max_conn, "created_at": datetime.now().isoformat(), "active": True}
+        LINKS[uid] = {"label": label, "limit_bytes": limit_bytes, "used_bytes": 0, "max_connections": max_conn, "addresses": addresses, "created_at": datetime.now().isoformat(), "active": True}
     return {"uuid": uid, "label": label, "limit_bytes": limit_bytes, "used_bytes": 0, "max_connections": max_conn, "active": True, "created_at": LINKS[uid]["created_at"], "vless_link": generate_vless_link(uid, remark=f"REN-{label}")}
 
 @app.get("/api/links")
@@ -278,7 +277,7 @@ async def list_links(_=Depends(require_auth)):
     result = []
     async with LINKS_LOCK:
         for uid, data in LINKS.items():
-            result.append({"uuid": uid, "label": data["label"], "limit_bytes": data["limit_bytes"], "used_bytes": data["used_bytes"], "max_connections": data.get("max_connections", 0), "active": data["active"], "created_at": data["created_at"], "current_connections": count_connections_for_link(uid), "vless_link": generate_vless_link(uid, remark=f"REN-{data['label']}")})
+            result.append({"uuid": uid, "label": data["label"], "limit_bytes": data["limit_bytes"], "used_bytes": data["used_bytes"], "max_connections": data.get("max_connections", 0),"addresses":data.get("addresses",[]), "active": data["active"], "created_at": data["created_at"], "current_connections": count_connections_for_link(uid), "vless_link": generate_vless_link(uid, remark=f"REN-{data['label']}")})
     result.sort(key=lambda x: x["created_at"], reverse=True)
     return {"links": result}
 
@@ -309,40 +308,6 @@ async def delete_link(uid: str, _=Depends(require_auth)):
         LINKS.pop(uid, None)
     await close_connections_for_link(uid)
     return {"ok": True}
-
-@app.get("/api/addresses")
-async def list_addresses(_=Depends(require_auth)):
-    async with CUSTOM_ADDRESSES_LOCK:
-        return {"addresses": list(CUSTOM_ADDRESSES)}
-
-@app.post("/api/addresses")
-async def add_address(request: Request, _=Depends(require_auth)):
-    body = await request.json()
-    address = (body.get("address") or "").strip()
-    if not address:
-        raise HTTPException(status_code=400, detail="Address is required")
-    if not re.match(r'^[a-zA-Z0-9\-_. ]+$', address):
-        raise HTTPException(status_code=400, detail="Address must contain only English letters, numbers, and characters: - _ .")
-    async with CUSTOM_ADDRESSES_LOCK:
-        if address in CUSTOM_ADDRESSES:
-            raise HTTPException(status_code=400, detail="Address already exists")
-        CUSTOM_ADDRESSES.append(address)
-    return {"ok": True, "addresses": list(CUSTOM_ADDRESSES)}
-
-@app.delete("/api/addresses")
-async def delete_all_addresses(_=Depends(require_auth)):
-    async with CUSTOM_ADDRESSES_LOCK:
-        CUSTOM_ADDRESSES.clear()
-    return {"ok": True, "addresses": []}
-
-@app.delete("/api/addresses/{index}")
-async def delete_address(index: int, _=Depends(require_auth)):
-    async with CUSTOM_ADDRESSES_LOCK:
-        if 0 <= index < len(CUSTOM_ADDRESSES):
-            CUSTOM_ADDRESSES.pop(index)
-        else:
-            raise HTTPException(status_code=404, detail="Address not found")
-    return {"ok": True, "addresses": list(CUSTOM_ADDRESSES)}
 
 @app.get("/api/links/{uid}/sub")
 async def get_subscription(uid: str, _=Depends(require_auth)):
@@ -391,8 +356,7 @@ async def subscription_endpoint(uid: str):
             raise HTTPException(status_code=404, detail="link not found")
     if not link["active"]:
         raise HTTPException(status_code=403, detail="link disabled")
-    async with CUSTOM_ADDRESSES_LOCK:
-        addresses = list(CUSTOM_ADDRESSES)
+    addresses = list(link.get("addresses") or [])
     sub_links = []
     server_link = generate_vless_link(uid, remark=f"REN-{link['label']}-Server")
     sub_links.append(server_link)
@@ -942,7 +906,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
     </button>
     <button class="nav-item" data-page="addresses">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-      <span data-en="Clean IP" data-fa="آی‌پی تمیز">Clean IP</span>
+      <span data-en="Clean IP" data-fa="آی‌پی تمیز اختصاصی">آی‌پی تمیز اختصاصی</span>
     </button>
     <div class="nav-section">System</div>
     <button class="nav-item" data-page="security">
@@ -968,7 +932,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
     <div class="page-header">
       <div>
         <div class="page-title" data-en="Dashboard" data-fa="داشبورد">Dashboard</div>
-        <div class="page-sub" id="last-update">Updated: --</div>
+        <div class="page-sub" id="last-update">بروزرسانی شد: --</div>
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-secondary" onclick="quickCreate(0.5,'GB')">+ 0.5 GB</button>
@@ -1066,7 +1030,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
   <section class="page" id="page-addresses">
     <div class="page-header">
       <div>
-        <div class="page-title" data-en="Clean IP" data-fa="آی‌پی تمیز">Clean IP</div>
+        <div class="page-title" data-en="Clean IP" data-fa="آی‌پی تمیز اختصاصی">آی‌پی تمیز اختصاصی</div>
         <div class="page-sub" data-en="IPs and domains for subscription configs" data-fa="آی‌پی و دامنه‌ها برای کانفیگ‌های سابسکریپشن">IPs and domains for subscription configs</div>
       </div>
       <div style="display:flex;gap:6px">
@@ -1104,33 +1068,37 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 <div class="modal-overlay" id="add-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#add-modal').classList.remove('show')">x</button>
-    <div class="modal-title">Add Inbound</div>
+    <div class="modal-title">افزودن اینباند</div>
     <div class="form-group">
-      <label class="form-label">Remark</label>
-      <input class="form-input" id="new-label" placeholder="e.g. User 1">
+      <label class="form-label">نام کاربر</label>
+      <input class="form-input" id="new-label" placeholder="مثال: کاربر ۱">
     </div>
     <div class="form-row">
       <div class="form-group" style="flex:1">
-        <label class="form-label">Traffic Limit</label>
-        <input class="form-input" id="new-limit" type="number" min="0" step="0.1" placeholder="0 = Unlimited">
+        <label class="form-label">حجم مجاز</label>
+        <input class="form-input" id="new-limit" type="number" min="0" step="0.1" placeholder="۰ = نامحدود">
       </div>
       <div class="form-group" style="min-width:80px;max-width:100px">
-        <label class="form-label">Unit</label>
+        <label class="form-label">واحد</label>
         <select class="form-select" id="new-unit"><option value="GB">GB</option></select>
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Max IPs</label>
-      <input class="form-input" id="new-maxconn" type="number" min="0" step="1" placeholder="0 = Unlimited">
+      <label class="form-label">حداکثر اتصال</label>
+      <input class="form-input" id="new-maxconn" type="number" min="0" step="1" placeholder="۰ = نامحدود">
     </div>
-    <button class="btn btn-primary" onclick="createLink()" style="width:100%;margin-top:8px;justify-content:center">Create</button>
+    <div class="form-group">
+      <label class="form-label">آی‌پی اختصاصی</label>
+      <textarea class="form-input" id="new-addresses" placeholder="هر مورد در یک خط"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="createLink()" style="width:100%;margin-top:8px;justify-content:center">ساخت اینباند</button>
   </div>
 </div>
 
 <div class="modal-overlay" id="detail-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative;max-width:540px">
     <button class="modal-close" onclick="$('#detail-modal').classList.remove('show')">x</button>
-    <div class="modal-title" id="detail-title">Inbound Details</div>
+    <div class="modal-title" id="detail-title">جزئیات اینباند</div>
     <div id="detail-content"></div>
   </div>
 </div>
@@ -1158,21 +1126,21 @@ body[dir="rtl"]{direction:rtl;text-align:right}
     </div>
     <div class="form-row">
       <div class="form-group" style="flex:1">
-        <label class="form-label">Traffic Limit</label>
-        <input class="form-input" id="edit-limit" type="number" min="0" step="0.1" placeholder="0 = Unlimited">
+        <label class="form-label">حجم مجاز</label>
+        <input class="form-input" id="edit-limit" type="number" min="0" step="0.1" placeholder="۰ = نامحدود">
       </div>
       <div class="form-group" style="min-width:80px;max-width:100px">
-        <label class="form-label">Unit</label>
+        <label class="form-label">واحد</label>
         <select class="form-select" id="edit-unit"><option value="GB">GB</option></select>
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Max IPs</label>
-      <input class="form-input" id="edit-maxconn" type="number" min="0" step="1" placeholder="0 = Unlimited">
+      <label class="form-label">حداکثر اتصال</label>
+      <input class="form-input" id="edit-maxconn" type="number" min="0" step="1" placeholder="۰ = نامحدود">
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn btn-primary" onclick="saveEdit()" style="flex:1;justify-content:center">Save</button>
-      <button class="btn btn-danger" onclick="resetEditTraffic()" style="justify-content:center">Reset Traffic</button>
+      <button class="btn btn-danger" onclick="resetEditTraffic()" style="justify-content:center">ریست شد Traffic</button>
     </div>
   </div>
 </div>
@@ -1219,7 +1187,7 @@ async function loadStats(){
     pulse($('#s-uptime'),statsData.uptime);
     pulse($('#s-domain'),statsData.domain);
     $('#links-badge').textContent=statsData.links_count;
-    $('#last-update').textContent=(lang==='fa'?'آخرین بروزرسانی: ':'Updated: ')+new Date().toLocaleTimeString(lang==='fa'?'fa-IR':'en-US');
+    $('#last-update').textContent=(lang==='fa'?'آخرین بروزرسانی: ':'بروزرسانی شد: ')+new Date().toLocaleTimeString(lang==='fa'?'fa-IR':'en-US');
     if($('#t-traffic'))$('#t-traffic').textContent=statsData.total_traffic_mb+' MB';
     if($('#t-reqs'))$('#t-reqs').textContent=statsData.total_requests.toLocaleString();
     if($('#t-uptime'))$('#t-uptime').textContent=statsData.uptime;
@@ -1303,12 +1271,13 @@ async function quickCreate(limit,unit){
 
 async function createLink(){
   const label=$('#new-label').value.trim()||'New Link';const val=parseFloat($('#new-limit').value)||0;const unit='GB';const maxconn=parseInt($('#new-maxconn').value)||0;
+ const addresses=$("#new-addresses").value.split("\n").map(v=>v.trim()).filter(Boolean);
   if(!/^[a-zA-Z0-9\-_. ]+$/.test(label)){toast('Only English letters allowed',true);return;}
-  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:val,limit_unit:unit,max_connections:maxconn})});if(!r.ok)throw new Error();toast('Created');$('#new-label').value='';$('#new-limit').value='';$('#new-maxconn').value='';$('#add-modal').classList.remove('show');await loadLinks();await loadStats();}catch(e){toast('Error',true)}
+  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:val,limit_unit:unit,max_connections:maxconn,addresses})});if(!r.ok)throw new Error();toast('Created');$('#new-label').value='';$('#new-limit').value='';$('#new-maxconn').value='';$('#add-modal').classList.remove('show');await loadLinks();await loadStats();}catch(e){toast('Error',true)}
 }
 
-async function resetUsage(uid){try{await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset_usage:true})});toast('Reset');await loadLinks();}catch(e){}}
-async function deleteLink(uid){if(!confirm('Delete this inbound?'))return;try{await fetch(`/api/links/${uid}`,{method:'DELETE'});toast('Deleted');await loadLinks();await loadStats();}catch(e){}}
+async function resetUsage(uid){try{await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset_usage:true})});toast('ریست شد');await loadLinks();}catch(e){}}
+async function deleteLink(uid){if(!confirm('Delete this inbound?'))return;try{await fetch(`/api/links/${uid}`,{method:'DELETE'});toast('حذف شد');await loadLinks();await loadStats();}catch(e){}}
 
 function showEditModal(uid){
   const l=allLinks.find(x=>x.uuid===uid);if(!l)return;
@@ -1330,7 +1299,7 @@ async function saveEdit(){
   try{
     const r=await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit_value:val,limit_unit:unit,max_connections:maxconn})});
     if(!r.ok)throw new Error();
-    toast('Updated');
+    toast('بروزرسانی شد');
     $('#edit-modal').classList.remove('show');
     await loadLinks();
   }catch(e){toast('Error',true)}
@@ -1338,7 +1307,7 @@ async function saveEdit(){
 
 async function resetEditTraffic(){
   const uid=$('#edit-uid').value;
-  if(!confirm('Reset traffic usage to zero?'))return;
+  if(!confirm('ریست شد traffic usage to zero?'))return;
   try{
     const r=await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset_usage:true})});
     if(!r.ok)throw new Error();
@@ -1347,7 +1316,7 @@ async function resetEditTraffic(){
   }catch(e){toast('Error',true)}
 }
 
-function copyLinkText(txt){navigator.clipboard.writeText(txt).then(()=>toast('Copied to clipboard')).catch(()=>toast('Failed to copy',true))}
+function copyLinkText(txt){navigator.clipboard.writeText(txt).then(()=>toast('در کلیپ‌بورد کپی شد')).catch(()=>toast('کپی ناموفق',true))}
 function showQRText(txt){if(!txt)return;const box=document.querySelector('.qr-box');$('#qr-img').src='https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='+encodeURIComponent(txt);$('#qr-modal').classList.add('show');}
 function downloadQR(){const img=$('#qr-img');if(!img.src)return;const a=document.createElement('a');a.href=img.src;a.download='ren-qr.png';a.click()}
 async function copySubLink(uid){
@@ -1355,14 +1324,14 @@ async function copySubLink(uid){
     const domain=location.host;
     const subUrl=`https://${domain}/sub/${uid}`;
     await navigator.clipboard.writeText(subUrl);
-    toast('Subscription URL copied');
-  }catch(e){toast('Failed to copy',true)}
+    toast('لینک سابسکریپشن کپی شد');
+  }catch(e){toast('کپی ناموفق',true)}
 }
 
 async function changePassword(){
   const cur=$('#cur-pw').value;const nw=$('#new-pw').value;
   if(!cur||!nw){toast('Fill all fields',true);return;}
-  try{const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Error');}toast('Updated');$('#cur-pw').value='';$('#new-pw').value='';}catch(e){toast(e.message,true)}
+  try{const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Error');}toast('بروزرسانی شد');$('#cur-pw').value='';$('#new-pw').value='';}catch(e){toast(e.message,true)}
 }
 
 applyTheme(theme);setLang(lang);
@@ -1422,7 +1391,7 @@ async function deleteAddress(index){
   try{
     const r=await fetch(`/api/addresses/${index}`,{method:'DELETE'});
     if(!r.ok)throw new Error();
-    toast('Deleted');
+    toast('حذف شد');
     await loadAddresses();
   }catch(e){toast('Error',true)}
 }
