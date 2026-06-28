@@ -26,7 +26,6 @@ CONFIG = {
     "secret": os.environ.get("SECRET_KEY", secrets.token_urlsafe(32)),
 }
 
-# --- State & Memory Management ---
 connections: dict = {}
 connection_sockets: dict = {}
 link_ip_map: dict = defaultdict(set)
@@ -38,6 +37,8 @@ http_client: httpx.AsyncClient | None = None
 LINKS: dict = {}
 LINKS_LOCK = asyncio.Lock()
 
+# ❌ لیست عمومی و سراسری CUSTOM_ADDRESSES کاملاً حذف شد.
+
 SESSION_COOKIE = "ren_session"
 SESSION_TTL = 60 * 60 * 24 * 7
 
@@ -48,35 +49,6 @@ AUTH = {"password_hash": hash_password(os.environ.get("ADMIN_PASSWORD", "admin")
 SESSIONS: dict = {}
 SESSIONS_LOCK = asyncio.Lock()
 
-# =================================================================
-# 🚀 اصلاح اصلی: ساخت نمونه اپلیکیشن پیش از تعریف ایونتها و روت‌ها
-# =================================================================
-app = FastAPI(title="REN", docs_url=None, redoc_url=None)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# --- Lifespan Event Handlers ---
-@app.on_event("startup")
-async def startup_event():
-    global http_client
-    limits = httpx.Limits(max_connections=500, max_keepalive_connections=100)
-    timeout = httpx.Timeout(30.0, connect=10.0)
-    http_client = httpx.AsyncClient(limits=limits, timeout=timeout, follow_redirects=True)
-    asyncio.create_task(keep_alive())
-    logger.info(f"REN started on port {CONFIG['port']}")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    if http_client:
-        await http_client.aclose()
-
-# --- Helper Functions & Security ---
 async def create_session() -> str:
     token = secrets.token_urlsafe(32)
     async with SESSIONS_LOCK:
@@ -97,6 +69,11 @@ async def require_auth(request: Request):
     if not await is_valid_session(token):
         raise HTTPException(status_code=401, detail="unauthorized")
     return token
+
+async def destroy_session(token: str | None):
+    if token:
+        async with SESSIONS_LOCK:
+            SESSIONS.pop(token, None)
 
 async def keep_alive():
     while True:
@@ -150,7 +127,7 @@ async def ensure_default_link():
                 "max_connections": 0, 
                 "created_at": datetime.now().isoformat(), 
                 "active": True,
-                "addresses": []
+                "addresses": [] # اضافه شدن لیست آی‌پی به هر اینباند
             }
 
 def get_client_ip(websocket: WebSocket) -> str:
@@ -178,7 +155,31 @@ async def close_connections_for_link(uid: str):
         connection_sockets.pop(cid, None)
     link_ip_map.pop(uid, None)
 
-# --- Pages Routes ---
+# --- نمونه‌سازی FastAPI بعد از تعاریف اولیه برای جلوگیری از خطای NameError ---
+app = FastAPI(title="REN", docs_url=None, redoc_url=None)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.on_event("startup")
+async def startup_event():
+    global http_client
+    limits = httpx.Limits(max_connections=500, max_keepalive_connections=100)
+    timeout = httpx.Timeout(30.0, connect=10.0)
+    http_client = httpx.AsyncClient(limits=limits, timeout=timeout, follow_redirects=True)
+    asyncio.create_task(keep_alive())
+    logger.info(f"REN started on port {CONFIG['port']}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if http_client:
+        await http_client.aclose()
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return LOGIN_HTML
@@ -195,7 +196,6 @@ async def root():
 async def health():
     return {"status": "ok", "connections": len(connections), "uptime": uptime()}
 
-# --- API Endpoints ---
 @app.post("/api/login")
 async def api_login(request: Request):
     body = await request.json()
@@ -252,9 +252,8 @@ async def get_stats(_=Depends(require_auth)):
         "hourly_traffic": dict(hourly_traffic),
     }
 
-# =================================================================
-# 🎯 تغییر اصلی: اضافه شدن مدیریت آی‌پی‌های اختصاصی به هر اینباند
-# =================================================================
+# --- 🎯 مدیریت اختصاصی اینباندها و آی‌پی‌های تمیز هر کاربر ---
+
 @app.post("/api/links")
 async def create_link(request: Request, _=Depends(require_auth)):
     body = await request.json()
@@ -265,13 +264,13 @@ async def create_link(request: Request, _=Depends(require_auth)):
     async with LINKS_LOCK:
         if label in LINKS:
             raise HTTPException(status_code=400, detail="An inbound with this name already exists")
-            
+    
     limit_value = float(body.get("limit_value") or 0)
     limit_unit = body.get("limit_unit") or "GB"
     limit_bytes = 0 if limit_value <= 0 else parse_size_to_bytes(limit_value, limit_unit)
     max_conn = int(body.get("max_connections") or 0)
     
-    # دریافت آی‌پی‌های اختصاصی وارد شده برای این اینباند از کلاینت
+    # ✅ گرفتن لیست آی‌پی‌های ارسال شده مخصوص این اینباند از بدنه درخواست (Add Inbound)
     raw_addresses = body.get("addresses") or []
     clean_addresses = [str(addr).strip() for addr in raw_addresses if str(addr).strip()]
 
@@ -284,7 +283,7 @@ async def create_link(request: Request, _=Depends(require_auth)):
             "max_connections": max_conn, 
             "created_at": datetime.now().isoformat(), 
             "active": True,
-            "addresses": clean_addresses # ذخیره درون خود آبجکت اینباند
+            "addresses": clean_addresses # ذخیره اختصاصی آی‌پی‌ها برای همین کاربر
         }
     return {"uuid": uid, "label": label, "ok": True}
 
@@ -302,7 +301,7 @@ async def list_links(_=Depends(require_auth)):
                 "active": data["active"], 
                 "created_at": data["created_at"], 
                 "current_connections": count_connections_for_link(uid), 
-                "addresses": data.get("addresses", []), # ارسال مجدد آی‌پی‌های اختصاصی به کلاینت
+                "addresses": data.get("addresses", []), # برگرداندن آی‌پی‌های اختصاصی به جدول فرانت‌انـد
                 "vless_link": generate_vless_link(uid, remark=f"REN-{data['label']}")
             })
     result.sort(key=lambda x: x["created_at"], reverse=True)
@@ -324,10 +323,11 @@ async def toggle_link(uid: str, request: Request, _=Depends(require_auth)):
             LINKS[uid]["used_bytes"] = 0
         if "max_connections" in body:
             LINKS[uid]["max_connections"] = max(0, int(body["max_connections"] or 0))
-        # اختصاص فیلد بروزرسانی برای تغییر آی‌پی‌های اختصاصی هنگام ویرایش
+        # ✅ امکان ویرایش و به‌روزرسانی آی‌پی‌های اختصاصی این کاربر
         if "addresses" in body:
             raw_addresses = body.get("addresses") or []
             LINKS[uid]["addresses"] = [str(addr).strip() for addr in raw_addresses if str(addr).strip()]
+            
     return {"ok": True}
 
 @app.delete("/api/links/{uid}")
@@ -337,20 +337,21 @@ async def delete_link(uid: str, _=Depends(require_auth)):
     await close_connections_for_link(uid)
     return {"ok": True}
 
-# --- Subscription Endpoint based on customized IPs ---
+# --- خروجی سابسکریپشن بر اساس آی‌پی‌های اختصاصی هر کاربر ---
 @app.get("/sub/{uid}")
 async def subscription_endpoint(uid: str):
     async with LINKS_LOCK:
         link = LINKS.get(uid)
         if link is None:
             raise HTTPException(status_code=404, detail="link not found")
+            
     if not link["active"]:
         raise HTTPException(status_code=403, detail="link disabled")
         
-    # گرفتن آدرس‌های اختصاصیِ ذخیره‌شده روی همین اینباند
+    # ✅ لود کردن آی‌پی‌های تمیز اختصاصی مربوط به همین اینباند
     addresses = link.get("addresses", [])
-    sub_links = []
     
+    sub_links = []
     server_link = generate_vless_link(uid, remark=f"REN-{link['label']}-Server")
     sub_links.append(server_link)
     
@@ -369,7 +370,9 @@ async def subscription_endpoint(uid: str):
     }
     return Response(content=encoded, headers=headers)
 
-# --- Core VLESS WebSocket Tunneling ---
+# ❌ تمام متدهای مربوط به مدیریت آدرس‌های سراسری قدیم کاملاً حذف شدند.
+
+# --- هسته اصلی WebSocket و پروکسی تانل (بدون کوچکترین تغییر) ---
 RELAY_BUF = 64 * 1024
 
 async def parse_vless_header(first_chunk: bytes):
@@ -503,9 +506,9 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
                     if not any(c.get("uuid") == uid and c.get("ip") == ip for c in connections.values()):
                         remove_ip_from_link(uid, ip)
 
-# --- Frontend Templates ---
-LOGIN_HTML = r"""<!-- کدهای HTML صفحه لاگین شما بدون تغییر -->"""
-DASHBOARD_HTML = r"""<!-- کدهای HTML صفحه داشبورد شما بدون تغییر -->"""
+# --- قالب‌های قالب‌بندی فرانت‌اند (به صورت دست‌نخورده جهت جاگذاری کدهای اصلی شما) ---
+LOGIN_HTML = r"""<!-- کدهای HTML صفحه لاگین اصلی شما -->"""
+DASHBOARD_HTML = r"""<!-- کدهای HTML صفحه داشبورد اصلی شما -->"""
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=CONFIG["port"], reload=True)
