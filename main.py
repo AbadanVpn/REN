@@ -513,19 +513,19 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
                         remove_ip_from_link(uid, ip)
 
 LOGIN_HTML = r"""<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="fa" dir="rtl" lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>REN</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html[data-theme="dark"]{--bg:#030712;--surface:rgba(17,24,39,0.85);--surface2:#1f2937;--border:rgba(255,255,255,0.08);--text:rgba(255,255,255,0.95);--text2:rgba(156,163,175,0.8);--text3:rgba(156,163,175,0.4);--primary:#6366f1;--primary-glow:rgba(99,102,241,0.15);--accent:#4f46e5;--error:#ef4444;--error-bg:rgba(239,68,68,0.08);--orb1:rgba(99,102,241,0.15);--orb2:rgba(139,92,246,0.12);--orb3:rgba(6,182,212,0.08)}
 html[data-theme="light"]{--bg:#f3f4f6;--surface:rgba(255,255,255,0.9);--surface2:#ffffff;--border:rgba(0,0,0,0.06);--text:rgba(17,24,39,0.92);--text2:rgba(75,85,99,0.8);--text3:rgba(156,163,175,0.6);--primary:#4f46e5;--primary-glow:rgba(79,70,229,0.12);--accent:#4338ca;--error:#dc2626;--error-bg:rgba(220,38,38,0.06);--orb1:rgba(79,70,229,0.1);--orb2:rgba(124,58,237,0.08);--orb3:rgba(8,145,178,0.05)}
-body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);transition:background .5s,color .5s;overflow:hidden}
+body{font-family:'Vazirmatn',Tahoma,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);transition:background .5s,color .5s;overflow:hidden}
 
 .bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
 .orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:0;animation:orbFloat 20s ease-in-out infinite}
@@ -672,7 +672,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <title>REN</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
@@ -911,7 +911,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
     <div class="nav-section">System</div>
     <button class="nav-item" data-page="security">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      <span data-en="Security" data-fa="امنیت">Security</span>
+      <span data-en="امنیت" data-fa="امنیت">امنیت</span>
     </button>
   </nav>
   <div class="sidebar-footer">
@@ -1027,40 +1027,18 @@ body[dir="rtl"]{direction:rtl;text-align:right}
     </div>
   </section>
 
-  <section class="page" id="page-addresses">
-    <div class="page-header">
-      <div>
-        <div class="page-title" data-en="Clean IP" data-fa="آی‌پی تمیز اختصاصی">آی‌پی تمیز اختصاصی</div>
-        <div class="page-sub" data-en="IPs and domains for subscription configs" data-fa="آی‌پی و دامنه‌ها برای کانفیگ‌های سابسکریپشن">IPs and domains for subscription configs</div>
-      </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-danger" onclick="deleteAllAddresses()" data-en="Delete All" data-fa="حذف همه آی‌پی‌ها">Delete All</button>
-        <button class="btn btn-primary" onclick="showAddAddressModal()">+ Add</button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header"><div class="card-title" data-en="Clean IP List" data-fa="لیست آی‌پی تمیز">Clean IP List</div></div>
-      <div class="status-item" style="flex-direction:column;gap:8px">
-        <div style="display:flex;justify-content:space-between;width:100%">
-          <span class="status-key" style="color:var(--text3);font-size:11px">Default: www.speedtest.net</span>
-        </div>
-        <div id="address-list" style="display:flex;flex-direction:column;gap:6px;width:100%"></div>
-      </div>
-    </div>
-  </section>
-
   <section class="page" id="page-security">
-    <div class="page-header"><div><div class="page-title">Security</div><div class="page-sub">Change panel password</div></div></div>
+    <div class="page-header"><div><div class="page-title">امنیت</div><div class="page-sub">تغییر رمز پنل</div></div></div>
     <div class="card" style="max-width:400px">
       <div class="form-group">
-        <label class="form-label">Current Password</label>
-        <input class="form-input" type="password" id="cur-pw" placeholder="Enter current password">
+        <label class="form-label">رمز فعلی</label>
+        <input class="form-input" type="password" id="cur-pw" placeholder="رمز فعلی را وارد کنید">
       </div>
       <div class="form-group">
-        <label class="form-label">New Password</label>
+        <label class="form-label">رمز جدید</label>
         <input class="form-input" type="password" id="new-pw" placeholder="Min 4 characters">
       </div>
-      <button class="btn btn-primary" onclick="changePassword()" style="margin-top:4px">Update Password</button>
+      <button class="btn btn-primary" onclick="changePassword()" style="margin-top:4px">بروزرسانی رمز</button>
     </div>
   </section>
 </main>
@@ -1106,11 +1084,11 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 <div class="modal-overlay" id="qr-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#qr-modal').classList.remove('show')">x</button>
-    <div class="modal-title">QR Code</div>
+    <div class="modal-title">کد QR</div>
     <div class="qr-box"><img id="qr-img" src="" alt="QR"></div>
     <div style="margin-top:14px;text-align:center;display:flex;gap:8px;justify-content:center">
-      <button class="btn btn-primary btn-sm" onclick="downloadQR()" style="padding:8px 20px">Download</button>
-      <button class="btn btn-secondary btn-sm" onclick="$('#qr-modal').classList.remove('show')" style="padding:8px 20px">Close</button>
+      <button class="btn btn-primary btn-sm" onclick="downloadQR()" style="padding:8px 20px">دانلود</button>
+      <button class="btn btn-secondary btn-sm" onclick="$('#qr-modal').classList.remove('show')" style="padding:8px 20px">بستن</button>
     </div>
   </div>
 </div>
@@ -1367,7 +1345,7 @@ function renderAddresses(){
   `).join('');
 }
 
-function showAddAddressModal(){$('#new-address').value='';$('#add-address-modal').classList.add('show')}
+function showAddModal(){$('#new-address').value='';$('#add-address-modal').classList.add('show')}
 
 async function addAddresses(){
   const text=$('#new-address').value.trim();
@@ -1422,6 +1400,8 @@ function updateChart(){
   trafficChart.data.labels=labels;trafficChart.data.datasets[0].data=data;
   trafficChart.update();
 }
+
+function showAddModal(){const ids=["new-label","new-limit","new-maxconn","new-addresses"];ids.forEach(i=>{const e=document.getElementById(i);if(e)e.value=""});document.getElementById("add-modal").classList.add("show");}
 </script>
 </body>
 </html>"""
