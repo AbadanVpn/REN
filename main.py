@@ -251,7 +251,6 @@ async def get_stats(_=Depends(require_auth)):
         "hourly_traffic": dict(hourly_traffic),
     }
 
-
 @app.post("/api/links")
 async def create_link(request: Request, _=Depends(require_auth)):
     body = await request.json()
@@ -311,12 +310,10 @@ async def delete_link(uid: str, _=Depends(require_auth)):
     await close_connections_for_link(uid)
     return {"ok": True}
 
-
 @app.get("/api/addresses")
 async def list_addresses(_=Depends(require_auth)):
     async with CUSTOM_ADDRESSES_LOCK:
         return {"addresses": list(CUSTOM_ADDRESSES)}
-
 
 @app.post("/api/addresses")
 async def add_address(request: Request, _=Depends(require_auth)):
@@ -332,6 +329,11 @@ async def add_address(request: Request, _=Depends(require_auth)):
         CUSTOM_ADDRESSES.append(address)
     return {"ok": True, "addresses": list(CUSTOM_ADDRESSES)}
 
+@app.delete("/api/addresses")
+async def delete_all_addresses(_=Depends(require_auth)):
+    async with CUSTOM_ADDRESSES_LOCK:
+        CUSTOM_ADDRESSES.clear()
+    return {"ok": True, "addresses": []}
 
 @app.delete("/api/addresses/{index}")
 async def delete_address(index: int, _=Depends(require_auth)):
@@ -379,7 +381,6 @@ async def get_subscription(uid: str, _=Depends(require_auth)):
         "sub_base64": encoded,
         "sub_text": sub_content,
     }
-
 
 @app.get("/sub/{uid}")
 async def subscription_endpoint(uid: str):
@@ -547,7 +548,6 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
                     if not has_other:
                         remove_ip_from_link(uid, ip)
 
-
 LOGIN_HTML = r"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -559,8 +559,8 @@ LOGIN_HTML = r"""<!DOCTYPE html>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html[data-theme="dark"]{--bg:#050508;--surface:rgba(20,20,20,0.85);--surface2:#1c1c1c;--border:rgba(255,255,255,0.06);--text:rgba(255,255,255,0.92);--text2:rgba(255,255,255,0.5);--text3:rgba(255,255,255,0.25);--primary:#dc2626;--primary-glow:rgba(220,38,38,0.15);--accent:#991b1b;--error:#ef4444;--error-bg:rgba(239,68,68,0.08);--orb1:rgba(220,38,38,0.12);--orb2:rgba(153,27,27,0.1);--orb3:rgba(239,68,68,0.06)}
-html[data-theme="light"]{--bg:#f8f9fa;--surface:rgba(255,255,255,0.9);--surface2:#f9fafb;--border:rgba(0,0,0,0.06);--text:rgba(0,0,0,0.88);--text2:rgba(0,0,0,0.5);--text3:rgba(0,0,0,0.25);--primary:#16a34a;--primary-glow:rgba(22,163,74,0.12);--accent:#15803d;--error:#dc2626;--error-bg:rgba(220,38,38,0.06);--orb1:rgba(22,163,74,0.1);--orb2:rgba(21,128,61,0.08);--orb3:rgba(34,197,94,0.05)}
+html[data-theme="dark"]{--bg:#030712;--surface:rgba(17,24,39,0.85);--surface2:#1f2937;--border:rgba(255,255,255,0.08);--text:rgba(255,255,255,0.95);--text2:rgba(156,163,175,0.8);--text3:rgba(156,163,175,0.4);--primary:#6366f1;--primary-glow:rgba(99,102,241,0.15);--accent:#4f46e5;--error:#ef4444;--error-bg:rgba(239,68,68,0.08);--orb1:rgba(99,102,241,0.15);--orb2:rgba(139,92,246,0.12);--orb3:rgba(6,182,212,0.08)}
+html[data-theme="light"]{--bg:#f3f4f6;--surface:rgba(255,255,255,0.9);--surface2:#ffffff;--border:rgba(0,0,0,0.06);--text:rgba(17,24,39,0.92);--text2:rgba(75,85,99,0.8);--text3:rgba(156,163,175,0.6);--primary:#4f46e5;--primary-glow:rgba(79,70,229,0.12);--accent:#4338ca;--error:#dc2626;--error-bg:rgba(220,38,38,0.06);--orb1:rgba(79,70,229,0.1);--orb2:rgba(124,58,237,0.08);--orb3:rgba(8,145,178,0.05)}
 body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);transition:background .5s,color .5s;overflow:hidden}
 
 .bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
@@ -577,16 +577,16 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;min-height:
 .toolbar button:hover{border-color:var(--primary);color:var(--primary);transform:scale(1.05)}
 
 .login-page{width:100%;max-width:380px;padding:0 20px;position:relative;z-index:1}
-.login-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:48px 36px 36px;position:relative;overflow:hidden;backdrop-filter:blur(40px);box-shadow:0 8px 40px rgba(0,0,0,0.15),0 0 80px rgba(220,38,38,0.05);animation:cardIn .8s cubic-bezier(0.16,1,0.3,1) forwards;opacity:0;transform:translateY(30px) scale(0.96)}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:48px 36px 36px;position:relative;overflow:hidden;backdrop-filter:blur(40px);box-shadow:0 8px 40px rgba(0,0,0,0.2),0 0 80px rgba(99,102,241,0.05);animation:cardIn .8s cubic-bezier(0.16,1,0.3,1) forwards;opacity:0;transform:translateY(30px) scale(0.96)}
 @keyframes cardIn{to{opacity:1;transform:translateY(0) scale(1)}}
 .login-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--primary),transparent);animation:shimmer 3s ease-in-out infinite}
 @keyframes shimmer{0%,100%{opacity:0.5;transform:scaleX(0.5)}50%{opacity:1;transform:scaleX(1)}}
-.login-card::after{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(220,38,38,0.04) 0%,transparent 50%);pointer-events:none;transition:opacity .3s;opacity:0}
+.login-card::after{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(99,102,241,0.04) 0%,transparent 50%);pointer-events:none;transition:opacity .3s;opacity:0}
 .login-card:hover::after{opacity:1}
 
 .brand{text-align:center;margin-bottom:36px}
-.brand svg{margin-bottom:20px;filter:drop-shadow(0 0 20px rgba(220,38,38,0.3));animation:logoPulse 4s ease-in-out infinite}
-@keyframes logoPulse{0%,100%{filter:drop-shadow(0 0 20px rgba(220,38,38,0.3));transform:scale(1)}50%{filter:drop-shadow(0 0 30px rgba(220,38,38,0.5));transform:scale(1.02)}}
+.brand svg{margin-bottom:20px;filter:drop-shadow(0 0 20px rgba(99,102,241,0.3));animation:logoPulse 4s ease-in-out infinite}
+@keyframes logoPulse{0%,100%{filter:drop-shadow(0 0 20px rgba(99,102,241,0.3));transform:scale(1)}50%{filter:drop-shadow(0 0 30px rgba(99,102,241,0.5));transform:scale(1.02)}}
 .brand h1{font-size:22px;font-weight:800;color:var(--text);letter-spacing:-0.03em;animation:fadeUp .6s .2s ease both}
 .brand p{font-size:11px;color:var(--text3);margin-top:6px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;animation:fadeUp .6s .3s ease both}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
@@ -599,12 +599,12 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;min-height:
 
 .login-btn{width:100%;padding:13px;background:var(--primary);border:none;border-radius:12px;color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;transition:all .3s cubic-bezier(0.4,0,0.2,1);letter-spacing:0.02em;position:relative;overflow:hidden;animation:fadeUp .6s .5s ease both}
 .login-btn::before{content:'';position:absolute;top:50%;left:50%;width:0;height:0;background:rgba(255,255,255,0.2);border-radius:50%;transform:translate(-50%,-50%);transition:width .5s,height .5s}
-.login-btn:hover{filter:brightness(1.15);transform:translateY(-2px);box-shadow:0 8px 25px rgba(220,38,38,0.35)}
+.login-btn:hover{filter:brightness(1.15);transform:translateY(-2px);box-shadow:0 8px 25px rgba(99,102,241,0.35)}
 .login-btn:hover::before{width:300px;height:300px}
 .login-btn:active{transform:translateY(0) scale(0.98)}
 .login-btn:active::before{width:0;height:0;transition:width .1s,height .1s}
 
-.error-msg{background:var(--error-bg);border:1px solid rgba(255,77,106,0.15);color:var(--error);padding:10px 14px;border-radius:10px;font-size:13px;display:none;margin-bottom:20px;text-align:center;font-weight:500;animation:shake .4s ease}
+.error-msg{background:var(--error-bg);border:1px solid rgba(99,102,241,0.15);color:var(--error);padding:10px 14px;border-radius:10px;font-size:13px;display:none;margin-bottom:20px;text-align:center;font-weight:500;animation:shake .4s ease}
 .error-msg.show{display:block}
 @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
 
@@ -658,7 +658,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;min-height:
           <animate attributeName="r" values="2;2.5;2" dur="2s" repeatCount="indefinite"/>
           <animate attributeName="opacity" values="0.9;0.6;0.9" dur="2s" repeatCount="indefinite"/>
         </circle>
-        <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="56" y2="56"><stop stop-color="#dc2626"/><stop offset="1" stop-color="#991b1b"/></linearGradient></defs>
+        <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="56" y2="56"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs>
       </svg>
       <h1>REN</h1>
       <p>v1.0</p>
@@ -700,7 +700,6 @@ document.getElementById('login-form').addEventListener('submit',async e=>{
 </body>
 </html>"""
 
-
 DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -714,8 +713,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html[data-theme="dark"]{--bg:#0a0a0a;--surface:#141414;--surface2:#1c1c1c;--surface3:#2a2a2a;--border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.1);--text:rgba(255,255,255,0.92);--text2:rgba(255,255,255,0.5);--text3:rgba(255,255,255,0.25);--primary:#dc2626;--primary-glow:rgba(220,38,38,0.15);--primary-dim:rgba(220,38,38,0.1);--accent:#991b1b;--green:#22c55e;--green-dim:rgba(34,197,94,0.1);--red:#ef4444;--red-dim:rgba(239,68,68,0.08);--yellow:#fbbf24;--sidebar-bg:#0f0f0f;--shadow:0 1px 3px rgba(0,0,0,0.4)}
-html[data-theme="light"]{--bg:#ffffff;--surface:#ffffff;--surface2:#f9fafb;--surface3:#f3f4f6;--border:rgba(0,0,0,0.06);--border2:rgba(0,0,0,0.1);--text:rgba(0,0,0,0.88);--text2:rgba(0,0,0,0.5);--text3:rgba(0,0,0,0.25);--primary:#16a34a;--primary-glow:rgba(22,163,74,0.1);--primary-dim:rgba(22,163,74,0.06);--accent:#15803d;--green:#16a34a;--green-dim:rgba(22,163,74,0.06);--red:#dc2626;--red-dim:rgba(220,38,38,0.06);--yellow:#d97706;--sidebar-bg:#ffffff;--shadow:0 1px 3px rgba(0,0,0,0.06)}
+html[data-theme="dark"]{--bg:#090d16;--surface:#111827;--surface2:#1f2937;--surface3:#374151;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.15);--text:rgba(255,255,255,0.95);--text2:rgba(156,163,175,0.8);--text3:rgba(156,163,175,0.4);--primary:#6366f1;--primary-glow:rgba(99,102,241,0.15);--primary-dim:rgba(99,102,241,0.1);--accent:#4f46e5;--green:#10b981;--green-dim:rgba(16,185,129,0.1);--red:#ef4444;--red-dim:rgba(239,68,68,0.1);--yellow:#f59e0b;--sidebar-bg:#0b0f19;--shadow:0 4px 20px rgba(0,0,0,0.25)}
+html[data-theme="light"]{--bg:#f3f4f6;--surface:#ffffff;--surface2:#f9fafb;--surface3:#e5e7eb;--border:rgba(0,0,0,0.06);--border2:rgba(0,0,0,0.12);--text:#111827;--text2:#4b5563;--text3:#9ca3af;--primary:#4f46e5;--primary-glow:rgba(79,70,229,0.1);--primary-dim:rgba(79,70,229,0.06);--accent:#4338ca;--green:#10b981;--green-dim:rgba(16,185,129,0.06);--red:#dc2626;--red-dim:rgba(220,38,38,0.06);--yellow:#d97706;--sidebar-bg:#ffffff;--shadow:0 4px 15px rgba(0,0,0,0.05)}
 html,body{height:100%}
 body{font-family:'Inter','Vazirmatn',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;transition:background .3s,color .3s}
 body[dir="rtl"]{direction:rtl;text-align:right}
@@ -744,7 +743,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 .sidebar-footer .footer-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
 .sidebar-footer .footer-btn:hover:not(.active){border-color:var(--border2);color:var(--text2)}
 .sidebar-footer .logout-btn{width:100%;padding:7px;border:1px solid var(--border);border-radius:7px;background:none;color:var(--text3);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
-.sidebar-footer .logout-btn:hover{background:var(--red-dim);border-color:rgba(255,77,106,0.2);color:var(--red)}
+.sidebar-footer .logout-btn:hover{background:var(--red-dim);border-color:rgba(239,68,68,0.2);color:var(--red)}
 .sidebar-footer .version{text-align:center;font-size:10px;color:var(--text3);margin-top:8px;letter-spacing:0.02em}
 
 .main{margin-left:220px;flex:1;padding:24px 28px 48px;min-height:100vh}
@@ -772,11 +771,11 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 
 .btn{font-family:inherit;font-size:12px;font-weight:600;border-radius:8px;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;border:none;transition:all .15s}
 .btn-primary{background:var(--primary);color:#fff}
-.btn-primary:hover{filter:brightness(1.1)}
+.btn-primary:hover{filter:brightness(1.1);box-shadow:0 0 15px var(--primary-glow)}
 .btn-secondary{background:var(--surface3);color:var(--text2);border:1px solid var(--border);position:relative;overflow:hidden}
 .btn-secondary:hover{border-color:var(--primary);color:var(--primary);transform:translateY(-1px);box-shadow:0 2px 8px var(--primary-glow)}
-.btn-danger{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,77,106,0.12)}
-.btn-danger:hover{background:rgba(255,77,106,0.15)}
+.btn-danger{background:var(--red-dim);color:var(--red);border:1px solid rgba(239,68,68,0.12)}
+.btn-danger:hover{background:rgba(239,68,68,0.2)}
 .btn-sm{padding:5px 10px;font-size:11px}
 
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -801,7 +800,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 
 .toggle{width:34px;height:18px;border-radius:10px;background:var(--surface3);position:relative;cursor:pointer;transition:all .3s cubic-bezier(0.4,0,0.2,1);border:1px solid var(--border)}
 .toggle::after{content:'';position:absolute;width:12px;height:12px;border-radius:50%;background:var(--text3);top:2px;left:2px;transition:all .3s cubic-bezier(0.4,0,0.2,1)}
-.toggle.on{background:var(--green);border-color:var(--green);box-shadow:0 0 12px rgba(34,197,94,0.3)}
+.toggle.on{background:var(--green);border-color:var(--green);box-shadow:0 0 12px rgba(16,185,129,0.3)}
 .toggle.on::after{left:18px;background:#fff}
 
 .sys-bar{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
@@ -833,26 +832,20 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 .modal-overlay.show .modal{transform:scale(1);opacity:1}
 .modal-title{font-size:15px;font-weight:700;margin-bottom:18px;color:var(--text)}
 .modal-close{position:absolute;top:12px;left:12px;background:var(--surface3);border:1px solid var(--border);color:var(--text3);width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .2s}
-.modal-close:hover{background:var(--red-dim);color:var(--red);border-color:rgba(255,77,106,0.2)}
+.modal-close:hover{background:var(--red-dim);color:var(--red);border-color:rgba(239,68,68,0.2)}
 .qr-box{text-align:center;padding:24px;background:var(--surface2);border-radius:14px;margin-top:14px;border:1px solid var(--border);transition:all .3s}
 .qr-box:hover{border-color:var(--primary);box-shadow:0 0 20px var(--primary-glow)}
 .qr-box img{max-width:220px;border-radius:10px;border:3px solid var(--surface);box-shadow:0 4px 16px rgba(0,0,0,0.1);transition:transform .3s}
 .qr-box img:hover{transform:scale(1.05)}
 
-@keyframes qrSlideUp{0%{transform:translateY(30px) scale(0.9);opacity:0}60%{transform:translateY(-4px) scale(1.02);opacity:1}100%{transform:translateY(0) scale(1);opacity:1}}
-@keyframes qrGlow{0%,100%{box-shadow:0 0 10px var(--primary-glow)}50%{box-shadow:0 0 25px var(--primary-glow),0 0 50px rgba(220,38,38,0.08)}}
-.qr-box.animate-in{animation:qrSlideUp .5s cubic-bezier(0.34,1.56,0.64,1) forwards}
-.qr-box.animate-glow{animation:qrGlow 2s ease-in-out 1}
-
 .btn-copy,.btn-qr{position:relative;overflow:hidden;font-family:inherit;font-size:11px;font-weight:600;border-radius:8px;padding:5px 10px;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:4px;transition:all .25s cubic-bezier(0.34,1.56,0.64,1)}
-.btn-copy{background:var(--primary-dim);color:var(--primary);border:1px solid rgba(220,38,38,0.15)}
+.btn-copy{background:var(--primary-dim);color:var(--primary);border:1px solid rgba(99,102,241,0.15)}
 .btn-copy:hover{background:var(--primary);color:#fff;transform:translateY(-2px);box-shadow:0 4px 12px var(--primary-glow)}
 .btn-copy:active{transform:translateY(0) scale(0.96)}
-.btn-qr{background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,0.15)}
-.btn-qr:hover{background:var(--green);color:#fff;transform:translateY(-2px);box-shadow:0 4px 12px rgba(34,197,94,0.2)}
+.btn-qr{background:var(--green-dim);color:var(--green);border:1px solid rgba(16,185,129,0.15)}
+.btn-qr:hover{background:var(--green);color:#fff;transform:translateY(-2px);box-shadow:0 4px 12px rgba(16,185,129,0.2)}
 .btn-qr:active{transform:translateY(0) scale(0.96)}
-.btn-copy .ripple,.btn-qr .ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,0.3);transform:scale(0);animation:rippleEffect .5s ease-out;pointer-events:none}
-@keyframes rippleEffect{to{transform:scale(3);opacity:0}}
+
 .detail-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:5px}
 .detail-value{padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text2);word-break:break-all;font-family:'SF Mono',Monaco,Consolas,monospace;line-height:1.6}
 .detail-row{display:flex;gap:12px;margin-bottom:12px}
@@ -922,7 +915,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
         <line x1="28" y1="21.5" x2="35" y2="30" stroke="#fff" stroke-width="1.5" opacity="0.8"/>
         <line x1="22.5" y1="33" x2="33.5" y2="33" stroke="#fff" stroke-width="1.5" opacity="0.8"/>
         <circle cx="28" cy="28" r="2" fill="#fff" opacity="0.9"/>
-        <defs><linearGradient id="lg" x1="0" y1="0" x2="56" y2="56"><stop stop-color="#dc2626"/><stop offset="1" stop-color="#991b1b"/></linearGradient></defs>
+        <defs><linearGradient id="lg" x1="0" y1="0" x2="56" y2="56"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs>
       </svg>
       <span class="brand-name">REN</span>
     </div>
@@ -971,7 +964,6 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 </aside>
 
 <main class="main">
-
   <section class="page active" id="page-dashboard">
     <div class="page-header">
       <div>
@@ -1077,7 +1069,10 @@ body[dir="rtl"]{direction:rtl;text-align:right}
         <div class="page-title" data-en="Clean IP" data-fa="آی‌پی تمیز">Clean IP</div>
         <div class="page-sub" data-en="IPs and domains for subscription configs" data-fa="آی‌پی و دامنه‌ها برای کانفیگ‌های سابسکریپشن">IPs and domains for subscription configs</div>
       </div>
-      <button class="btn btn-primary" onclick="showAddAddressModal()">+ Add</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-danger" onclick="deleteAllAddresses()" data-en="Delete All" data-fa="حذف همه آی‌پی‌ها">Delete All</button>
+        <button class="btn btn-primary" onclick="showAddAddressModal()">+ Add</button>
+      </div>
     </div>
     <div class="card">
       <div class="card-header"><div class="card-title" data-en="Clean IP List" data-fa="لیست آی‌پی تمیز">Clean IP List</div></div>
@@ -1224,7 +1219,7 @@ async function loadStats(){
     pulse($('#s-uptime'),statsData.uptime);
     pulse($('#s-domain'),statsData.domain);
     $('#links-badge').textContent=statsData.links_count;
-    $('#last-update').textContent=(lang==='fa'?'Last update: ':'Updated: ')+new Date().toLocaleTimeString(lang==='fa'?'fa-IR':'en-US');
+    $('#last-update').textContent=(lang==='fa'?'آخرین بروزرسانی: ':'Updated: ')+new Date().toLocaleTimeString(lang==='fa'?'fa-IR':'en-US');
     if($('#t-traffic'))$('#t-traffic').textContent=statsData.total_traffic_mb+' MB';
     if($('#t-reqs'))$('#t-reqs').textContent=statsData.total_requests.toLocaleString();
     if($('#t-uptime'))$('#t-uptime').textContent=statsData.uptime;
@@ -1260,7 +1255,7 @@ function renderLinks(links){
       <button class="toggle ${r.l.active?'on':''}" data-uid="${r.l.uuid}" onclick="toggleLink(this)" title="Toggle"></button>
       <button class="btn btn-secondary btn-sm" onclick="showEditModal('${r.l.uuid}')" title="Edit" style="background:rgba(251,191,36,0.1);color:var(--yellow);border:1px solid rgba(251,191,36,0.2)">e</button>
       <button class="btn-copy" onclick="copyLinkText('${esc(r.l.vless_link)}')" title="Copy">c</button>
-      <button class="btn-copy" onclick="copySubLink('${r.l.uuid}')" title="Sub" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,0.15)">s</button>
+      <button class="btn-copy" onclick="copySubLink('${r.l.uuid}')" title="Sub" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(16,185,129,0.15)">s</button>
       <button class="btn-qr" onclick="showQRText('${esc(r.l.vless_link)}')" title="QR">qr</button>
       <button class="btn btn-danger btn-sm" onclick="deleteLink('${r.l.uuid}')" title="Delete">x</button>
     </div></td>
@@ -1279,8 +1274,8 @@ function renderLinks(links){
     <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)"><span style="font-weight:600;color:${r.maxConn>0&&r.curConn>=r.maxConn?'var(--red)':'var(--text)'}">${r.curConn}/${r.maxConn||'∞'}</span> <span>IPs</span></div>
     <div class="inbound-card-actions">
       <button class="btn btn-secondary btn-sm" onclick="showEditModal('${r.l.uuid}')" style="background:rgba(251,191,36,0.1);color:var(--yellow);border:1px solid rgba(251,191,36,0.2)">e</button>
-      <button class="btn-copy" onclick="copyAllConfigs('${r.l.uuid}')">c</button>
-      <button class="btn-copy" onclick="copySubLink('${r.l.uuid}')" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,0.15)">s</button>
+      <button class="btn-copy" onclick="copyLinkText('${esc(r.l.vless_link)}')">c</button>
+      <button class="btn-copy" onclick="copySubLink('${r.l.uuid}')" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(16,185,129,0.15)">s</button>
       <button class="btn-qr" onclick="showQRText('${esc(r.l.vless_link)}')">qr</button>
       <button class="btn btn-danger btn-sm" onclick="deleteLink('${r.l.uuid}')">x</button>
     </div>
@@ -1352,40 +1347,8 @@ async function resetEditTraffic(){
   }catch(e){toast('Error',true)}
 }
 
-function showDetail(uid){
-  const l=allLinks.find(x=>x.uuid===uid);if(!l)return;
-  const u=l.used_bytes,lim=l.limit_bytes;const uF=fmtBytes(u);const lF=fmtLimit(lim);
-  const pct=lim>0?Math.min(100,(u/lim)*100):0;const col=pct>90?'var(--red)':pct>70?'var(--yellow)':'var(--primary)';
-  const created=l.created_at?new Date(l.created_at).toLocaleString(lang==='fa'?'fa-IR':'en-US'):'--';
-  $('#detail-title').textContent=l.label;
-  $('#detail-content').innerHTML=`
-    <div class="detail-row">
-      <div class="detail-col"><div class="detail-label">Protocol</div><div class="detail-value" style="font-family:inherit"><span class="tag tag-vless">VLESS</span></div></div>
-      <div class="detail-col"><div class="detail-label">Status</div><div class="detail-value" style="font-family:inherit"><span class="tag ${l.active?'tag-active':'tag-disabled'}">${l.active?'Active':'Disabled'}</span></div></div>
-    </div>
-    <div style="margin-bottom:12px"><div class="detail-label">UUID</div><div class="detail-value">${l.uuid}</div></div>
-    <div class="detail-row">
-      <div class="detail-col"><div class="detail-label">Used</div><div class="detail-value">${uF}</div></div>
-      <div class="detail-col"><div class="detail-label">Limit</div><div class="detail-value">${lF}</div></div>
-      <div class="detail-col"><div class="detail-label">Usage</div><div class="detail-value">${pct.toFixed(1)}%</div></div>
-    </div>
-    <div class="sys-bar" style="margin-bottom:12px"><div class="sys-bar-fill" style="width:${pct}%;background:${col}"></div></div>
-    <div class="detail-row">
-      <div class="detail-col"><div class="detail-label">Connected IPs</div><div class="detail-value">${l.current_connections||0} / ${l.max_connections||'Unlimited'}</div></div>
-      <div class="detail-col"><div class="detail-label">Created</div><div class="detail-value" style="font-family:inherit">${created}</div></div>
-    </div>
-    <div style="margin-bottom:0"><div class="detail-label">VLESS Link</div><div class="detail-value">${esc(l.vless_link)}</div></div>
-    <div class="detail-actions">
-      <button class="btn-copy" onclick="copyAllConfigs('${l.uuid}');$('#detail-modal').classList.remove('show')" style="padding:8px 18px;font-size:12px">Copy All</button>
-      <button class="btn-qr" onclick="showQRText('${esc(l.vless_link)}');$('#detail-modal').classList.remove('show')" style="padding:8px 18px;font-size:12px">QR Code</button>
-      <button class="btn btn-secondary btn-sm" onclick="copySubLink('${l.uuid}')" style="padding:8px 18px;font-size:12px">Subscription URL</button>
-      <button class="btn btn-secondary btn-sm" onclick="resetUsage('${l.uuid}');$('#detail-modal').classList.remove('show')" style="padding:8px 18px">Reset Traffic</button>
-    </div>`;
-  $('#detail-modal').classList.add('show');
-}
-
 function copyLinkText(txt){navigator.clipboard.writeText(txt).then(()=>toast('Copied to clipboard')).catch(()=>toast('Failed to copy',true))}
-function showQRText(txt){if(!txt)return;const box=document.querySelector('.qr-box');box.classList.remove('animate-in','animate-glow');$('#qr-img').src='https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='+encodeURIComponent(txt);$('#qr-modal').classList.add('show');requestAnimationFrame(()=>{box.classList.add('animate-in');setTimeout(()=>box.classList.add('animate-glow'),500)})}
+function showQRText(txt){if(!txt)return;const box=document.querySelector('.qr-box');$('#qr-img').src='https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='+encodeURIComponent(txt);$('#qr-modal').classList.add('show');}
 function downloadQR(){const img=$('#qr-img');if(!img.src)return;const a=document.createElement('a');a.href=img.src;a.download='ren-qr.png';a.click()}
 async function copySubLink(uid){
   try{
@@ -1464,10 +1427,21 @@ async function deleteAddress(index){
   }catch(e){toast('Error',true)}
 }
 
+async function deleteAllAddresses(){
+  const msg = lang === 'fa' ? 'آیا از حذف تمام آی‌پی‌ها اطمینان دارید؟' : 'Are you sure you want to delete all addresses?';
+  if(!confirm(msg)) return;
+  try{
+    const r = await fetch('/api/addresses', {method: 'DELETE'});
+    if(!r.ok) throw new Error();
+    toast(lang === 'fa' ? 'تمامی آی‌پی‌ها حذف شدند' : 'All addresses deleted');
+    await loadAddresses();
+  }catch(e){toast('Error',true)}
+}
+
 let chartLabels=[];let chartData=[];
 function initChart(){
   const ctx=document.getElementById('trafficChart');if(!ctx)return;
-  trafficChart=new Chart(ctx,{type:'bar',data:{labels:[],datasets:[{label:'MB',data:[],backgroundColor:'rgba(220,38,38,0.7)',borderColor:'#dc2626',borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'rgba(255,255,255,0.3)',font:{size:10}}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'rgba(255,255,255,0.3)',font:{size:10},callback:v=>v+' MB'},beginAtZero:true}}}});
+  trafficChart=new Chart(ctx,{type:'bar',data:{labels:[],datasets:[{label:'MB',data:[],backgroundColor:'rgba(99,102,241,0.7)',borderColor:'#6366f1',borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'rgba(255,255,255,0.3)',font:{size:10}}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'rgba(255,255,255,0.3)',font:{size:10},callback:v=>v+' MB'},beginAtZero:true}}}});
 }
 initChart();
 function updateChart(){
@@ -1482,7 +1456,6 @@ function updateChart(){
 </script>
 </body>
 </html>"""
-
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
