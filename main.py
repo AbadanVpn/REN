@@ -575,6 +575,7 @@ body{font-family:'Vazirmatn',Tahoma,sans-serif;min-height:100vh;display:flex;ali
 .particles{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .particle{position:absolute;width:2px;height:2px;background:var(--primary);border-radius:50%;opacity:0;animation:particleFall linear infinite}
 @keyframes particleFall{0%{opacity:0;transform:translateY(-10px) scale(0)}10%{opacity:0.6;transform:translateY(0) scale(1)}90%{opacity:0.3;transform:translateY(calc(100vh - 20px)) scale(0.5)}100%{opacity:0;transform:translateY(100vh) scale(0)}}
+body,.main,.sidebar,.page,.card,.form-input,.btn,.table,.modal,.nav-item,.page-title,.page-sub{font-family:'Vazirmatn',Tahoma,sans-serif!important}
 </style>
 </head>
 <body>
@@ -890,25 +891,22 @@ body[dir="rtl"]{direction:rtl;text-align:right}
     </div>
   </div>
   <nav class="sidebar-nav">
-    <div class="nav-section">Main</div>
+    <div class="nav-section">اصلی</div>
     <button class="nav-item active" data-page="dashboard">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      <span data-en="Dashboard" data-fa="داشبورد">Dashboard</span>
+      <span data-en="Dashboard" data-fa="داشبورد">داشبورد</span>
     </button>
     <button class="nav-item" data-page="inbounds">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-      <span data-en="Inbounds" data-fa="اینباندها">Inbounds</span>
+      <span data-en="Inbounds" data-fa="اینباندها">اینباندها</span>
       <span class="nav-badge" id="links-badge">0</span>
     </button>
     <button class="nav-item" data-page="traffic">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-      <span data-en="Traffic" data-fa="ترافیک">Traffic</span>
+      <span data-en="Traffic" data-fa="ترافیک">ترافیک</span>
     </button>
-    <button class="nav-item" data-page="addresses">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-      <span data-en="Clean IP" data-fa="آی‌پی تمیز اختصاصی">آی‌پی تمیز اختصاصی</span>
-    </button>
-    <div class="nav-section">System</div>
+    
+    <div class="nav-section">سیستم</div>
     <button class="nav-item" data-page="security">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
       <span data-en="امنیت" data-fa="امنیت">امنیت</span>
@@ -931,7 +929,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
   <section class="page active" id="page-dashboard">
     <div class="page-header">
       <div>
-        <div class="page-title" data-en="Dashboard" data-fa="داشبورد">Dashboard</div>
+        <div class="page-title" data-en="Dashboard" data-fa="داشبورد">داشبورد</div>
         <div class="page-sub" id="last-update">بروزرسانی شد: --</div>
       </div>
       <div style="display:flex;gap:6px">
@@ -941,11 +939,11 @@ body[dir="rtl"]{direction:rtl;text-align:right}
     </div>
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-label" data-en="Traffic" data-fa="ترافیک">Traffic</div>
+        <div class="stat-label" data-en="Traffic" data-fa="ترافیک">ترافیک</div>
         <div class="stat-value" id="s-traffic">--<span class="stat-unit"> MB</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label" data-en="Inbounds" data-fa="اینباندها">Inbounds</div>
+        <div class="stat-label" data-en="Inbounds" data-fa="اینباندها">اینباندها</div>
         <div class="stat-value" id="s-links">--</div>
       </div>
       <div class="stat-card">
@@ -976,7 +974,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
   <section class="page" id="page-inbounds">
     <div class="page-header">
       <div>
-        <div class="page-title" data-en="Inbounds" data-fa="اینباندها">Inbounds</div>
+        <div class="page-title" data-en="Inbounds" data-fa="اینباندها">اینباندها</div>
         <div class="page-sub">VLESS over WebSocket</div>
       </div>
       <button class="btn btn-primary" onclick="showAddModal()">+ Add</button>
@@ -999,7 +997,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
             <th style="width:32px">ID</th>
             <th>Remark</th>
             <th style="width:56px">Type</th>
-            <th>Traffic</th>
+            <th>ترافیک</th>
             <th style="width:80px">IPs</th>
             <th style="width:64px">Status</th>
             <th style="width:100px">Actions</th>
@@ -1018,7 +1016,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
   </section>
 
   <section class="page" id="page-traffic">
-    <div class="page-header"><div><div class="page-title">Traffic</div><div class="page-sub">Traffic statistics</div></div></div>
+    <div class="page-header"><div><div class="page-title">ترافیک</div><div class="page-sub">Traffic statistics</div></div></div>
     <div class="card">
       <div class="card-header"><div class="card-title">Overview</div></div>
       <div class="status-item"><span class="status-key">Total Traffic</span><span class="status-val" id="t-traffic">-- MB</span></div>
