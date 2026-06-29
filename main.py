@@ -46,6 +46,8 @@ http_client: httpx.AsyncClient | None = None
 LINKS: dict = {}
 LINKS_LOCK = asyncio.Lock()
 
+CUSTOM_ADDRESSES: list = ["www.speedtest.net"]
+CUSTOM_ADDRESSES_LOCK = asyncio.Lock()
 
 SESSION_COOKIE = "ren_session"
 SESSION_TTL = 60 * 60 * 24 * 7
@@ -119,22 +121,22 @@ def generate_uuid(seed: str | None = None) -> str:
     h = hashlib.sha256(f"{seed}{CONFIG['secret']}".encode()).hexdigest()
     return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
 
-def generate_vless_link(uuid: str, remark: str = "REN", address: str = None, port: int = 443, security: str = "tls", fingerprint: str = "chrome") -> str:
+def generate_vless_link(uuid: str, remark: str = "REN", address: str = None) -> str:
     domain = get_domain()
     addr = address if address else domain
     path = f"/ws/{uuid}"
     params = {
         "encryption": "none",
-        "security": security,
+        "security": "tls",
         "type": "ws",
         "host": domain,
         "path": path,
         "sni": domain,
-        "fp": fingerprint,
+        "fp": "chrome",
         "alpn": "http/1.1",
     }
     query = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
-    return f"vless://{uuid}@{addr}:{port}?{query}#{quote(remark)}"
+    return f"vless://{uuid}@{addr}:443?{query}#{quote(remark)}"
 
 def uptime() -> str:
     secs = int(time.time() - stats["start_time"])
@@ -151,18 +153,7 @@ def parse_size_to_bytes(value: float, unit: str) -> int:
 async def ensure_default_link():
     async with LINKS_LOCK:
         if not LINKS:
-            LINKS["Default"] = {
-                "label":"پیش‌فرض",
-                "limit_bytes":0,
-                "used_bytes":0,
-                "max_connections":0,
-                "addresses":["www.speedtest.net"],
-                "created_at":datetime.now().isoformat(),
-                "active":True,
-                "port":443,
-                "security":"tls",
-                "fingerprint":"chrome"
-            }
+            LINKS["Default"] = {"label": "Default", "limit_bytes": 0, "used_bytes": 0, "max_connections": 0, "created_at": datetime.now().isoformat(), "active": True}
 
 def get_client_ip(websocket: WebSocket) -> str:
     forwarded = websocket.headers.get("x-forwarded-for")
@@ -275,61 +266,19 @@ async def create_link(request: Request, _=Depends(require_auth)):
     limit_unit = body.get("limit_unit") or "GB"
     limit_bytes = 0 if limit_value <= 0 else parse_size_to_bytes(limit_value, limit_unit)
     max_conn = int(body.get("max_connections") or 0)
-    addresses=[str(a).strip() for a in (body.get("addresses") or []) if str(a).strip()]
     if max_conn < 0:
         max_conn = 0
-    # New fields: port, security, fingerprint
-    port = int(body.get("port", 443))
-    security = body.get("security", "tls")
-    fingerprint = body.get("fingerprint", "chrome")
     uid = label
     async with LINKS_LOCK:
-        LINKS[uid] = {
-            "label": label,
-            "limit_bytes": limit_bytes,
-            "used_bytes": 0,
-            "max_connections": max_conn,
-            "addresses": addresses,
-            "created_at": datetime.now().isoformat(),
-            "active": True,
-            "port": port,
-            "security": security,
-            "fingerprint": fingerprint
-        }
-    return {
-        "uuid": uid,
-        "label": label,
-        "limit_bytes": limit_bytes,
-        "used_bytes": 0,
-        "max_connections": max_conn,
-        "active": True,
-        "created_at": LINKS[uid]["created_at"],
-        "port": port,
-        "security": security,
-        "fingerprint": fingerprint,
-        "vless_link": generate_vless_link(uid, remark=f"REN-{label}", port=port, security=security, fingerprint=fingerprint)
-    }
+        LINKS[uid] = {"label": label, "limit_bytes": limit_bytes, "used_bytes": 0, "max_connections": max_conn, "created_at": datetime.now().isoformat(), "active": True}
+    return {"uuid": uid, "label": label, "limit_bytes": limit_bytes, "used_bytes": 0, "max_connections": max_conn, "active": True, "created_at": LINKS[uid]["created_at"], "vless_link": generate_vless_link(uid, remark=f"REN-{label}")}
 
 @app.get("/api/links")
 async def list_links(_=Depends(require_auth)):
     result = []
     async with LINKS_LOCK:
         for uid, data in LINKS.items():
-            result.append({
-                "uuid": uid,
-                "label": data["label"],
-                "limit_bytes": data["limit_bytes"],
-                "used_bytes": data["used_bytes"],
-                "max_connections": data.get("max_connections", 0),
-                "addresses":data.get("addresses",[]),
-                "active": data["active"],
-                "created_at": data["created_at"],
-                "current_connections": count_connections_for_link(uid),
-                "port": data.get("port", 443),
-                "security": data.get("security", "tls"),
-                "fingerprint": data.get("fingerprint", "chrome"),
-                "vless_link": generate_vless_link(uid, remark=f"REN-{data['label']}", port=data.get("port", 443), security=data.get("security", "tls"), fingerprint=data.get("fingerprint", "chrome"))
-            })
+            result.append({"uuid": uid, "label": data["label"], "limit_bytes": data["limit_bytes"], "used_bytes": data["used_bytes"], "max_connections": data.get("max_connections", 0), "active": data["active"], "created_at": data["created_at"], "current_connections": count_connections_for_link(uid), "vless_link": generate_vless_link(uid, remark=f"REN-{data['label']}")})
     result.sort(key=lambda x: x["created_at"], reverse=True)
     return {"links": result}
 
@@ -352,13 +301,6 @@ async def toggle_link(uid: str, request: Request, _=Depends(require_auth)):
         if "max_connections" in body:
             mc = int(body["max_connections"] or 0)
             LINKS[uid]["max_connections"] = mc if mc >= 0 else 0
-        # New fields update
-        if "port" in body:
-            LINKS[uid]["port"] = int(body["port"])
-        if "security" in body:
-            LINKS[uid]["security"] = body["security"]
-        if "fingerprint" in body:
-            LINKS[uid]["fingerprint"] = body["fingerprint"]
     return {"ok": True}
 
 @app.delete("/api/links/{uid}")
@@ -368,19 +310,47 @@ async def delete_link(uid: str, _=Depends(require_auth)):
     await close_connections_for_link(uid)
     return {"ok": True}
 
+@app.get("/api/addresses")
+async def list_addresses(_=Depends(require_auth)):
+    async with CUSTOM_ADDRESSES_LOCK:
+        return {"addresses": list(CUSTOM_ADDRESSES)}
+
+@app.post("/api/addresses")
+async def add_address(request: Request, _=Depends(require_auth)):
+    body = await request.json()
+    address = (body.get("address") or "").strip()
+    if not address:
+        raise HTTPException(status_code=400, detail="Address is required")
+    if not re.match(r'^[a-zA-Z0-9\-_. ]+$', address):
+        raise HTTPException(status_code=400, detail="Address must contain only English letters, numbers, and characters: - _ .")
+    async with CUSTOM_ADDRESSES_LOCK:
+        if address in CUSTOM_ADDRESSES:
+            raise HTTPException(status_code=400, detail="Address already exists")
+        CUSTOM_ADDRESSES.append(address)
+    return {"ok": True, "addresses": list(CUSTOM_ADDRESSES)}
+
+@app.delete("/api/addresses")
+async def delete_all_addresses(_=Depends(require_auth)):
+    async with CUSTOM_ADDRESSES_LOCK:
+        CUSTOM_ADDRESSES.clear()
+    return {"ok": True, "addresses": []}
+
+@app.delete("/api/addresses/{index}")
+async def delete_address(index: int, _=Depends(require_auth)):
+    async with CUSTOM_ADDRESSES_LOCK:
+        if 0 <= index < len(CUSTOM_ADDRESSES):
+            CUSTOM_ADDRESSES.pop(index)
+        else:
+            raise HTTPException(status_code=404, detail="Address not found")
+    return {"ok": True, "addresses": list(CUSTOM_ADDRESSES)}
+
 @app.get("/api/links/{uid}/sub")
 async def get_subscription(uid: str, _=Depends(require_auth)):
     async with LINKS_LOCK:
         link = LINKS.get(uid)
         if link is None:
             raise HTTPException(status_code=404, detail="link not found")
-    vless_link = generate_vless_link(
-        uid,
-        remark=f"REN-{link['label']}",
-        port=link.get("port", 443),
-        security=link.get("security", "tls"),
-        fingerprint=link.get("fingerprint", "chrome")
-    )
+    vless_link = generate_vless_link(uid, remark=f"REN-{link['label']}")
     used = link["used_bytes"]
     limit = link["limit_bytes"]
     used_mb = round(used / (1024 * 1024), 2)
@@ -395,9 +365,6 @@ async def get_subscription(uid: str, _=Depends(require_auth)):
 # Usage: {pct}%
 # Status: {'Active' if link['active'] else 'Disabled'}
 # Expiry: Unlimited
-# Port: {link.get('port', 443)}
-# Security: {link.get('security', 'tls')}
-# Fingerprint: {link.get('fingerprint', 'chrome')}
 {vless_link}"""
     encoded = base64.b64encode(sub_content.encode()).decode()
     return {
@@ -413,9 +380,6 @@ async def get_subscription(uid: str, _=Depends(require_auth)):
         "active": link["active"],
         "sub_base64": encoded,
         "sub_text": sub_content,
-        "port": link.get("port", 443),
-        "security": link.get("security", "tls"),
-        "fingerprint": link.get("fingerprint", "chrome")
     }
 
 @app.get("/sub/{uid}")
@@ -427,27 +391,14 @@ async def subscription_endpoint(uid: str):
             raise HTTPException(status_code=404, detail="link not found")
     if not link["active"]:
         raise HTTPException(status_code=403, detail="link disabled")
-    addresses = list(link.get("addresses") or [])
+    async with CUSTOM_ADDRESSES_LOCK:
+        addresses = list(CUSTOM_ADDRESSES)
     sub_links = []
-    # Server (main) link
-    server_link = generate_vless_link(
-        uid,
-        remark=f"REN-{link['label']}-Server",
-        port=link.get("port", 443),
-        security=link.get("security", "tls"),
-        fingerprint=link.get("fingerprint", "chrome")
-    )
+    server_link = generate_vless_link(uid, remark=f"REN-{link['label']}-Server")
     sub_links.append(server_link)
     for i, addr in enumerate(addresses):
         remark = f"REN-{link['label']}-IP{i+1}"
-        vless_link = generate_vless_link(
-            uid,
-            remark=remark,
-            address=addr,
-            port=link.get("port", 443),
-            security=link.get("security", "tls"),
-            fingerprint=link.get("fingerprint", "chrome")
-        )
+        vless_link = generate_vless_link(uid, remark=remark, address=addr)
         sub_links.append(vless_link)
     sub_content = "\n".join(sub_links)
     encoded = base64.b64encode(sub_content.encode()).decode()
@@ -597,21 +548,20 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
                     if not has_other:
                         remove_ip_from_link(uid, ip)
 
-# HTML login and dashboard (same as before, but with modifications in the dashboard HTML)
 LOGIN_HTML = r"""<!DOCTYPE html>
-<html lang="fa" dir="rtl" lang="en" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>REN</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html[data-theme="dark"]{--bg:#030712;--surface:rgba(17,24,39,0.85);--surface2:#1f2937;--border:rgba(255,255,255,0.08);--text:rgba(255,255,255,0.95);--text2:rgba(156,163,175,0.8);--text3:rgba(156,163,175,0.4);--primary:#6366f1;--primary-glow:rgba(99,102,241,0.15);--accent:#4f46e5;--error:#ef4444;--error-bg:rgba(239,68,68,0.08);--orb1:rgba(99,102,241,0.15);--orb2:rgba(139,92,246,0.12);--orb3:rgba(6,182,212,0.08)}
 html[data-theme="light"]{--bg:#f3f4f6;--surface:rgba(255,255,255,0.9);--surface2:#ffffff;--border:rgba(0,0,0,0.06);--text:rgba(17,24,39,0.92);--text2:rgba(75,85,99,0.8);--text3:rgba(156,163,175,0.6);--primary:#4f46e5;--primary-glow:rgba(79,70,229,0.12);--accent:#4338ca;--error:#dc2626;--error-bg:rgba(220,38,38,0.06);--orb1:rgba(79,70,229,0.1);--orb2:rgba(124,58,237,0.08);--orb3:rgba(8,145,178,0.05)}
-body{font-family:'Vazirmatn',Tahoma,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);transition:background .5s,color .5s;overflow:hidden}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);transition:background .5s,color .5s;overflow:hidden}
 
 .bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
 .orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:0;animation:orbFloat 20s ease-in-out infinite}
@@ -661,7 +611,6 @@ body{font-family:'Vazirmatn',Tahoma,sans-serif;min-height:100vh;display:flex;ali
 .particles{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .particle{position:absolute;width:2px;height:2px;background:var(--primary);border-radius:50%;opacity:0;animation:particleFall linear infinite}
 @keyframes particleFall{0%{opacity:0;transform:translateY(-10px) scale(0)}10%{opacity:0.6;transform:translateY(0) scale(1)}90%{opacity:0.3;transform:translateY(calc(100vh - 20px)) scale(0.5)}100%{opacity:0;transform:translateY(100vh) scale(0)}}
-body,.main,.sidebar,.page,.card,.form-input,.btn,.table,.modal,.nav-item,.page-title,.page-sub{font-family:'Vazirmatn',Tahoma,sans-serif!important}
 </style>
 </head>
 <body>
@@ -759,6 +708,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <title>REN</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
@@ -766,18 +716,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 html[data-theme="dark"]{--bg:#090d16;--surface:#111827;--surface2:#1f2937;--surface3:#374151;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.15);--text:rgba(255,255,255,0.95);--text2:rgba(156,163,175,0.8);--text3:rgba(156,163,175,0.4);--primary:#6366f1;--primary-glow:rgba(99,102,241,0.15);--primary-dim:rgba(99,102,241,0.1);--accent:#4f46e5;--green:#10b981;--green-dim:rgba(16,185,129,0.1);--red:#ef4444;--red-dim:rgba(239,68,68,0.1);--yellow:#f59e0b;--sidebar-bg:#0b0f19;--shadow:0 4px 20px rgba(0,0,0,0.25)}
 html[data-theme="light"]{--bg:#f3f4f6;--surface:#ffffff;--surface2:#f9fafb;--surface3:#e5e7eb;--border:rgba(0,0,0,0.06);--border2:rgba(0,0,0,0.12);--text:#111827;--text2:#4b5563;--text3:#9ca3af;--primary:#4f46e5;--primary-glow:rgba(79,70,229,0.1);--primary-dim:rgba(79,70,229,0.06);--accent:#4338ca;--green:#10b981;--green-dim:rgba(16,185,129,0.06);--red:#dc2626;--red-dim:rgba(220,38,38,0.06);--yellow:#d97706;--sidebar-bg:#ffffff;--shadow:0 4px 15px rgba(0,0,0,0.05)}
 html,body{height:100%}
-
-/* یکسان‌سازی فونت کل سیستم برای برطرف کردن تفاوت فونت بخش main با سایر بخش‌ها */
-body, .main, .sidebar, .page, .card, .form-input, .btn, .table, .modal, .nav-item, .page-title, .page-sub, .stat-label, .stat-value, .card-title, .form-label {
-    font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif !important;
-}
-
-body{background:var(--bg);color:var(--text);min-height:100vh;display:flex;transition:background .3s,color .3s}
+body{font-family:'Inter','Vazirmatn',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;transition:background .3s,color .3s}
 body[dir="rtl"]{direction:rtl;text-align:right}
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
 
 .sidebar{width:220px;background:var(--sidebar-bg);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;left:0;top:0;bottom:0;z-index:100;transition:background .3s}
-body[dir="rtl"] .sidebar {border-right:none;border-left:1px solid var(--border);left:auto;right:0}
 .sidebar-brand{padding:16px 16px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);position:relative;overflow:hidden}
 .sidebar-brand::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--primary),transparent);animation:shimmer 4s ease-in-out infinite}
 @keyframes shimmer{0%,100%{opacity:0.3;transform:scaleX(0.3)}50%{opacity:0.8;transform:scaleX(1)}}
@@ -789,16 +732,11 @@ body[dir="rtl"] .sidebar {border-right:none;border-left:1px solid var(--border);
 .sidebar-nav{flex:1;padding:8px;overflow-y:auto}
 .nav-section{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;padding:14px 12px 6px}
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;margin:1px 0;border-radius:8px;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;text-decoration:none;border:none;background:none;width:100%;text-align:left}
-body[dir="rtl"] .nav-item {text-align:right}
 .nav-item:hover{background:var(--primary-dim);color:var(--text)}
-.nav-item.active{background:var(--primary-dim);color:var(--primary);font-weight:600;}
-body[dir="ltr"] .nav-item.active{box-shadow:inset 3px 0 0 var(--primary)}
-body[dir="rtl"] .nav-item.active{box-shadow:inset -3px 0 0 var(--primary)}
+.nav-item.active{background:var(--primary-dim);color:var(--primary);font-weight:600;box-shadow:inset 3px 0 0 var(--primary)}
 .nav-icon{width:18px;height:18px;flex-shrink:0;opacity:0.7}
 .nav-item.active .nav-icon{opacity:1}
-body[dir="ltr"] .nav-badge{margin-left:auto}
-body[dir="rtl"] .nav-badge{margin-right:auto}
-.nav-badge{background:var(--surface3);color:var(--text3);font-size:10px;padding:2px 7px;border-radius:8px;font-weight:600}
+.nav-badge{margin-left:auto;background:var(--surface3);color:var(--text3);font-size:10px;padding:2px 7px;border-radius:8px;font-weight:600}
 .sidebar-footer{padding:12px;border-top:1px solid var(--border)}
 .sidebar-footer .footer-row{display:flex;gap:4px;margin-bottom:8px}
 .sidebar-footer .footer-btn{flex:1;padding:6px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text3);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;text-align:center}
@@ -808,10 +746,7 @@ body[dir="rtl"] .nav-badge{margin-right:auto}
 .sidebar-footer .logout-btn:hover{background:var(--red-dim);border-color:rgba(239,68,68,0.2);color:var(--red)}
 .sidebar-footer .version{text-align:center;font-size:10px;color:var(--text3);margin-top:8px;letter-spacing:0.02em}
 
-.main{flex:1;padding:24px 28px 48px;min-height:100vh}
-body[dir="ltr"] .main {margin-left:220px}
-body[dir="rtl"] .main {margin-right:220px}
-
+.main{margin-left:220px;flex:1;padding:24px 28px 48px;min-height:100vh}
 .page{display:none;animation:pageIn .4s ease}
 .page.active{display:block}
 @keyframes pageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -848,7 +783,6 @@ body[dir="rtl"] .main {margin-right:220px}
 .table-wrap{overflow-x:auto}
 .table{width:100%;border-collapse:collapse}
 .table th{text-align:left;font-size:11px;font-weight:600;color:var(--text3);padding:10px 12px;text-transform:uppercase;letter-spacing:0.04em;border-bottom:1px solid var(--border);background:var(--surface2)}
-body[dir="rtl"] .table th {text-align:right}
 .table td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
 .table tr:last-child td{border-bottom:none}
 .table tbody tr:hover td{background:var(--primary-dim)}
@@ -867,10 +801,7 @@ body[dir="rtl"] .table th {text-align:right}
 .toggle{width:34px;height:18px;border-radius:10px;background:var(--surface3);position:relative;cursor:pointer;transition:all .3s cubic-bezier(0.4,0,0.2,1);border:1px solid var(--border)}
 .toggle::after{content:'';position:absolute;width:12px;height:12px;border-radius:50%;background:var(--text3);top:2px;left:2px;transition:all .3s cubic-bezier(0.4,0,0.2,1)}
 .toggle.on{background:var(--green);border-color:var(--green);box-shadow:0 0 12px rgba(16,185,129,0.3)}
-body[dir="ltr"] .toggle.on::after{left:18px;background:#fff}
-body[dir="rtl"] .toggle.on::after{left:2px;background:#fff}
-body[dir="rtl"] .toggle::after{right:2px;left:auto}
-body[dir="rtl"] .toggle.on::after{right:18px;left:auto;background:#fff}
+.toggle.on::after{left:18px;background:#fff}
 
 .sys-bar{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
 .sys-bar-fill{height:100%;border-radius:3px;transition:width .4s}
@@ -900,9 +831,7 @@ body[dir="rtl"] .toggle.on::after{right:18px;left:auto;background:#fff}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:460px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,0.3),0 0 40px var(--primary-glow);transform:scale(0.9);opacity:0;transition:all .4s cubic-bezier(0.34,1.56,0.64,1)}
 .modal-overlay.show .modal{transform:scale(1);opacity:1}
 .modal-title{font-size:15px;font-weight:700;margin-bottom:18px;color:var(--text)}
-.modal-close{position:absolute;top:12px;background:var(--surface3);border:1px solid var(--border);color:var(--text3);width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .2s}
-body[dir="ltr"] .modal-close {right:12px}
-body[dir="rtl"] .modal-close {left:12px}
+.modal-close{position:absolute;top:12px;left:12px;background:var(--surface3);border:1px solid var(--border);color:var(--text3);width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .2s}
 .modal-close:hover{background:var(--red-dim);color:var(--red);border-color:rgba(239,68,68,0.2)}
 .qr-box{text-align:center;padding:24px;background:var(--surface2);border-radius:14px;margin-top:14px;border:1px solid var(--border);transition:all .3s}
 .qr-box:hover{border-color:var(--primary);box-shadow:0 0 20px var(--primary-glow)}
@@ -925,13 +854,9 @@ body[dir="rtl"] .modal-close {left:12px}
 
 .inbounds-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .search-box{flex:1;min-width:180px;position:relative}
-.search-box input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:all .2s}
-body[dir="ltr"] .search-box input {padding:8px 12px 8px 32px;}
-body[dir="rtl"] .search-box input {padding:8px 32px 8px 12px;}
+.search-box input{width:100%;padding:8px 12px 8px 32px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:all .2s}
 .search-box input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}
-.search-box svg{position:absolute;top:50%;transform:translateY(-50%);color:var(--text3)}
-body[dir="ltr"] .search-box svg {left:10px}
-body[dir="rtl"] .search-box svg {right:10px}
+.search-box svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text3)}
 .filter-chips{display:flex;gap:3px;padding:3px 5px;background:var(--surface2);border:1px solid var(--border);border-radius:8px}
 .chip{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;border:none;background:none;transition:all .2s;font-family:inherit}
 .chip.active{background:var(--primary);color:#fff}
@@ -942,9 +867,7 @@ body[dir="rtl"] .search-box svg {right:10px}
 .inbound-card-header{display:flex;align-items:center;justify-content:space-between}
 .inbound-card-id{font-size:10px;color:var(--text3);font-weight:600}
 .inbound-card-name{font-size:13px;font-weight:600;color:var(--text)}
-.inbound-card-actions{display:flex;gap:4px;}
-body[dir="ltr"] .inbound-card-actions {justify-content:flex-end}
-body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
+.inbound-card-actions{display:flex;gap:4px;justify-content:flex-end}
 
 .mobile-header{display:none;position:fixed;top:0;left:0;right:0;height:44px;background:var(--sidebar-bg);border-bottom:1px solid var(--border);z-index:90;align-items:center;justify-content:space-between;padding:0 14px}
 .menu-toggle{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}
@@ -953,13 +876,8 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
 
 @media(max-width:768px){
   .sidebar{transform:translateX(-100%);width:220px;z-index:200}
-  body[dir="rtl"] .sidebar{transform:translateX(100%)}
-  .sidebar.open{transform:translateX(0) !important;}
-  body[dir="ltr"] .sidebar.open{box-shadow:4px 0 20px rgba(0,0,0,0.4)}
-  body[dir="rtl"] .sidebar.open{box-shadow:-4px 0 20px rgba(0,0,0,0.4)}
-  .main{padding-top:60px;padding-left:12px;padding-right:12px}
-  body[dir="ltr"] .main {margin-left:0}
-  body[dir="rtl"] .main {margin-right:0}
+  .sidebar.open{transform:translateX(0);box-shadow:4px 0 20px rgba(0,0,0,0.4)}
+  .main{margin-left:0;padding-top:60px;padding-left:12px;padding-right:12px}
   .mobile-header{display:flex}
   .stats-row{grid-template-columns:1fr 1fr}
   .grid-2{grid-template-columns:1fr}
@@ -1008,25 +926,28 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
     </div>
   </div>
   <nav class="sidebar-nav">
-    <div class="nav-section" data-en="MAIN" data-fa="اصلی">اصلی</div>
+    <div class="nav-section">Main</div>
     <button class="nav-item active" data-page="dashboard">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      <span data-en="Dashboard" data-fa="داشبورد">داشبورد</span>
+      <span data-en="Dashboard" data-fa="داشبورد">Dashboard</span>
     </button>
     <button class="nav-item" data-page="inbounds">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-      <span data-en="Inbounds" data-fa="اینباندها">اینباندها</span>
+      <span data-en="Inbounds" data-fa="اینباندها">Inbounds</span>
       <span class="nav-badge" id="links-badge">0</span>
     </button>
     <button class="nav-item" data-page="traffic">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-      <span data-en="Traffic" data-fa="ترافیک">ترافیک</span>
+      <span data-en="Traffic" data-fa="ترافیک">Traffic</span>
     </button>
-    
-    <div class="nav-section" data-en="SYSTEM" data-fa="سیستم">سیستم</div>
+    <button class="nav-item" data-page="addresses">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+      <span data-en="Clean IP" data-fa="آی‌پی تمیز">Clean IP</span>
+    </button>
+    <div class="nav-section">System</div>
     <button class="nav-item" data-page="security">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      <span data-en="Security" data-fa="امنیت">امنیت</span>
+      <span data-en="Security" data-fa="امنیت">Security</span>
     </button>
   </nav>
   <div class="sidebar-footer">
@@ -1043,12 +964,11 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
 </aside>
 
 <main class="main">
-  <!-- صفحه داشبورد -->
   <section class="page active" id="page-dashboard">
     <div class="page-header">
       <div>
-        <div class="page-title" data-en="Dashboard" data-fa="داشبورد">داشبورد</div>
-        <div class="page-sub" id="last-update">بروزرسانی شد: --</div>
+        <div class="page-title" data-en="Dashboard" data-fa="داشبورد">Dashboard</div>
+        <div class="page-sub" id="last-update">Updated: --</div>
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-secondary" onclick="quickCreate(0.5,'GB')">+ 0.5 GB</button>
@@ -1057,11 +977,11 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
     </div>
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-label" data-en="Traffic" data-fa="ترافیک">ترافیک</div>
+        <div class="stat-label" data-en="Traffic" data-fa="ترافیک">Traffic</div>
         <div class="stat-value" id="s-traffic">--<span class="stat-unit"> MB</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label" data-en="Inbounds" data-fa="اینباندها">اینباندها</div>
+        <div class="stat-label" data-en="Inbounds" data-fa="اینباندها">Inbounds</div>
         <div class="stat-value" id="s-links">--</div>
       </div>
       <div class="stat-card">
@@ -1075,51 +995,50 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
     </div>
     <div class="grid-2">
       <div class="card">
-        <div class="card-header"><div class="card-title" data-en="CPU Usage" data-fa="میزان مصرف پردازنده (CPU)">CPU Usage</div><span id="s-cpu-val" style="font-size:18px;font-weight:700;color:var(--primary)">--%</span></div>
+        <div class="card-header"><div class="card-title">CPU Usage</div><span id="s-cpu-val" style="font-size:18px;font-weight:700;color:var(--primary)">--%</span></div>
         <div class="sys-bar"><div class="sys-bar-fill" id="s-cpu-bar" style="width:0%;background:var(--primary)"></div></div>
       </div>
       <div class="card">
-        <div class="card-header"><div class="card-title" data-en="Memory" data-fa="میزان مصرف حافظه (Memory)">Memory</div><span id="s-mem-val" style="font-size:18px;font-weight:700;color:var(--green)">--%</span></div>
+        <div class="card-header"><div class="card-title">Memory</div><span id="s-mem-val" style="font-size:18px;font-weight:700;color:var(--green)">--%</span></div>
         <div class="sys-bar"><div class="sys-bar-fill" id="s-mem-bar" style="width:0%;background:var(--green)"></div></div>
       </div>
     </div>
     <div class="card">
-      <div class="card-header"><div class="card-title" data-en="Traffic Chart" data-fa="نمودار ترافیک">Traffic Chart</div></div>
+      <div class="card-header"><div class="card-title">Traffic Chart</div></div>
       <div style="height:180px"><canvas id="trafficChart"></canvas></div>
     </div>
   </section>
 
-  <!-- صفحه اینباندها -->
   <section class="page" id="page-inbounds">
     <div class="page-header">
       <div>
-        <div class="page-title" data-en="Inbounds" data-fa="اینباندها">اینباندها</div>
+        <div class="page-title" data-en="Inbounds" data-fa="اینباندها">Inbounds</div>
         <div class="page-sub">VLESS over WebSocket</div>
       </div>
-      <button class="btn btn-primary" onclick="showAddModal()" data-en="+ Add" data-fa="+ افزودن">+ Add</button>
+      <button class="btn btn-primary" onclick="showAddModal()">+ Add</button>
     </div>
     <div class="inbounds-toolbar">
       <div class="search-box">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input id="inbound-search" placeholder="Search by name or UUID..." data-placeholder-en="Search by name or UUID..." data-placeholder-fa="جستجو بر اساس نام یا UUID..." oninput="filterInbounds()">
+        <input id="inbound-search" placeholder="Search by name or UUID..." oninput="filterInbounds()">
       </div>
       <div class="filter-chips">
-        <button class="chip active" onclick="setFilter('all',this)" data-en="All" data-fa="همه">All</button>
-        <button class="chip" onclick="setFilter('active',this)" data-en="Active" data-fa="فعال">Active</button>
-        <button class="chip" onclick="setFilter('disabled',this)" data-en="Disabled" data-fa="غیرفعال">Disabled</button>
+        <button class="chip active" onclick="setFilter('all',this)">All</button>
+        <button class="chip" onclick="setFilter('active',this)">Active</button>
+        <button class="chip" onclick="setFilter('disabled',this)">Disabled</button>
       </div>
     </div>
     <div class="card" style="border-radius:12px;overflow:hidden;padding:0">
       <div class="table-wrap">
         <table class="table">
           <thead><tr>
-            <th style="width:32px" data-en="ID" data-fa="شناسه">ID</th>
-            <th data-en="Remark" data-fa="نام کاربر">Remark</th>
-            <th style="width:56px" data-en="Type" data-fa="نوع">Type</th>
-            <th data-en="Traffic" data-fa="ترافیک">ترافیک</th>
-            <th style="width:80px" data-en="IPs" data-fa="اتصال‌ها">IPs</th>
-            <th style="width:64px" data-en="Status" data-fa="وضعیت">Status</th>
-            <th style="width:100px" data-en="Actions" data-fa="عملیات">Actions</th>
+            <th style="width:32px">ID</th>
+            <th>Remark</th>
+            <th style="width:56px">Type</th>
+            <th>Traffic</th>
+            <th style="width:80px">IPs</th>
+            <th style="width:64px">Status</th>
+            <th style="width:100px">Actions</th>
           </tr></thead>
           <tbody id="links-tbody"></tbody>
         </table>
@@ -1129,204 +1048,135 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
         <div class="empty-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
         </div>
-        <div data-en="No inbounds found" data-fa="هیچ اینباندی یافت نشد">No inbounds found</div>
+        <div>No inbounds found</div>
       </div>
     </div>
   </section>
 
-  <!-- صفحه ترافیک -->
   <section class="page" id="page-traffic">
-    <div class="page-header"><div><div class="page-title" data-en="Traffic" data-fa="ترافیک">ترافیک</div><div class="page-sub" data-en="Traffic statistics" data-fa="آمار و گزارشات مصارف ترافیک">Traffic statistics</div></div></div>
+    <div class="page-header"><div><div class="page-title">Traffic</div><div class="page-sub">Traffic statistics</div></div></div>
     <div class="card">
-      <div class="card-header"><div class="card-title" data-en="Overview" data-fa="مرور کلی">Overview</div></div>
-      <div class="status-item"><span class="status-key" data-en="Total Traffic" data-fa="ترافیک کل">Total Traffic</span><span class="status-val" id="t-traffic">-- MB</span></div>
-      <div class="status-item"><span class="status-key" data-en="Total Requests" data-fa="کل درخواست‌ها">Total Requests</span><span class="status-val" id="t-reqs">--</span></div>
-      <div class="status-item"><span class="status-key" data-en="Uptime" data-fa="مدت زمان فعالیت (آپتایم)">Uptime</span><span class="status-val" id="t-uptime">--</span></div>
+      <div class="card-header"><div class="card-title">Overview</div></div>
+      <div class="status-item"><span class="status-key">Total Traffic</span><span class="status-val" id="t-traffic">-- MB</span></div>
+      <div class="status-item"><span class="status-key">Total Requests</span><span class="status-val" id="t-reqs">--</span></div>
+      <div class="status-item"><span class="status-key">Uptime</span><span class="status-val" id="t-uptime">--</span></div>
     </div>
   </section>
 
-  <!-- صفحه امنیت -->
+  <section class="page" id="page-addresses">
+    <div class="page-header">
+      <div>
+        <div class="page-title" data-en="Clean IP" data-fa="آی‌پی تمیز">Clean IP</div>
+        <div class="page-sub" data-en="IPs and domains for subscription configs" data-fa="آی‌پی و دامنه‌ها برای کانفیگ‌های سابسکریپشن">IPs and domains for subscription configs</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-danger" onclick="deleteAllAddresses()" data-en="Delete All" data-fa="حذف همه آی‌پی‌ها">Delete All</button>
+        <button class="btn btn-primary" onclick="showAddAddressModal()">+ Add</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title" data-en="Clean IP List" data-fa="لیست آی‌پی تمیز">Clean IP List</div></div>
+      <div class="status-item" style="flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;width:100%">
+          <span class="status-key" style="color:var(--text3);font-size:11px">Default: www.speedtest.net</span>
+        </div>
+        <div id="address-list" style="display:flex;flex-direction:column;gap:6px;width:100%"></div>
+      </div>
+    </div>
+  </section>
+
   <section class="page" id="page-security">
-    <div class="page-header"><div><div class="page-title" data-en="Security" data-fa="امنیت">امنیت</div><div class="page-sub" data-en="Change Panel Password" data-fa="تغییر رمز عبور پنل مدیریتی">تغییر رمز پنل</div></div></div>
+    <div class="page-header"><div><div class="page-title">Security</div><div class="page-sub">Change panel password</div></div></div>
     <div class="card" style="max-width:400px">
       <div class="form-group">
-        <label class="form-label" data-en="Current Password" data-fa="رمز عبور فعلی">رمز فعلی</label>
-        <input class="form-input" type="password" id="cur-pw" placeholder="رمز فعلی را وارد کنید" data-placeholder-en="Enter current password" data-placeholder-fa="رمز فعلی را وارد کنید">
+        <label class="form-label">Current Password</label>
+        <input class="form-input" type="password" id="cur-pw" placeholder="Enter current password">
       </div>
       <div class="form-group">
-        <label class="form-label" data-en="New Password" data-fa="رمز عبور جدید">رمز جدید</label>
-        <input class="form-input" type="password" id="new-pw" placeholder="Min 4 characters" data-placeholder-en="Min 4 characters" data-placeholder-fa="حداقل ۴ کاراکتر">
+        <label class="form-label">New Password</label>
+        <input class="form-input" type="password" id="new-pw" placeholder="Min 4 characters">
       </div>
-      <button class="btn btn-primary" onclick="changePassword()" style="margin-top:4px" data-en="Update Password" data-fa="بروزرسانی رمز عبور">بروزرسانی رمز</button>
+      <button class="btn btn-primary" onclick="changePassword()" style="margin-top:4px">Update Password</button>
     </div>
   </section>
 </main>
 
-<!-- مودال افزودن اینباند -->
 <div class="modal-overlay" id="add-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#add-modal').classList.remove('show')">x</button>
-    <div class="modal-title" data-en="Add Inbound" data-fa="افزودن اینباند">افزودن اینباند</div>
+    <div class="modal-title">Add Inbound</div>
     <div class="form-group">
-      <label class="form-label" data-en="Username" data-fa="نام کاربر">نام کاربر</label>
-      <input class="form-input" id="new-label" placeholder="مثال: کاربر ۱" data-placeholder-en="e.g. User 1" data-placeholder-fa="مثال: کاربر ۱">
+      <label class="form-label">Remark</label>
+      <input class="form-input" id="new-label" placeholder="e.g. User 1">
     </div>
     <div class="form-row">
       <div class="form-group" style="flex:1">
-        <label class="form-label" data-en="Allowed Volume" data-fa="حجم مجاز">حجم مجاز</label>
-        <input class="form-input" id="new-limit" type="number" min="0" step="0.1" placeholder="۰ = نامحدود" data-placeholder-en="0 = Unlimited" data-placeholder-fa="۰ = نامحدود">
+        <label class="form-label">Traffic Limit</label>
+        <input class="form-input" id="new-limit" type="number" min="0" step="0.1" placeholder="0 = Unlimited">
       </div>
       <div class="form-group" style="min-width:80px;max-width:100px">
-        <label class="form-label" data-en="Unit" data-fa="واحد">واحد</label>
+        <label class="form-label">Unit</label>
         <select class="form-select" id="new-unit"><option value="GB">GB</option></select>
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label" data-en="Max Connections" data-fa="حداکثر اتصال">حداکثر اتصال</label>
-      <input class="form-input" id="new-maxconn" type="number" min="0" step="1" placeholder="۰ = نامحدود" data-placeholder-en="0 = Unlimited" data-placeholder-fa="۰ = نامحدود">
+      <label class="form-label">Max IPs</label>
+      <input class="form-input" id="new-maxconn" type="number" min="0" step="1" placeholder="0 = Unlimited">
     </div>
-    <!-- انتخاب پورت -->
-    <div class="form-group">
-      <label class="form-label" data-en="Connection Port" data-fa="پورت اتصال">پورت اتصال</label>
-      <select class="form-select" id="new-port-select" onchange="toggleCustomPort(this, 'new')">
-        <optgroup label="پورت‌های امن (TLS)">
-          <option value="443">443</option>
-          <option value="8443">8443</option>
-          <option value="2096">2096</option>
-        </optgroup>
-        <optgroup label="پورت‌های معمولی (Non-TLS)">
-          <option value="80">80</option>
-          <option value="2082">2082</option>
-          <option value="2086">2086</option>
-          <option value="2095">2095</option>
-          <option value="8880">8880</option>
-          <option value="2052">2052</option>
-          <option value="2087">2087</option>
-          <option value="2053">2053</option>
-          <option value="8443">8443</option>
-        </optgroup>
-        <option value="custom">سفارشی (Custom)</option>
-      </select>
-      <input id="new-port-custom" type="number" placeholder="مثلاً 8443" style="display:none; margin-top:5px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text);" />
-    </div>
-    <!-- انتخاب Fingerprint -->
-    <div class="form-group">
-      <label class="form-label" data-en="Fingerprint" data-fa="اثر انگشت">Fingerprint</label>
-      <select class="form-select" id="new-fingerprint">
-        <option value="chrome">Chrome</option>
-        <option value="firefox">Firefox</option>
-        <option value="safari">Safari</option>
-        <option value="ios" selected>iOS Device (پیش‌فرض)</option>
-        <option value="android">Android Device</option>
-        <option value="edge">Microsoft Edge</option>
-        <option value="360">Browser 360</option>
-        <option value="qq">QQ Browser</option>
-        <option value="random">Random (اتفاقی)</option>
-        <option value="randomized">Randomized</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label" data-en="Dedicated IP" data-fa="آی‌پی اختصاصی">آی‌پی اختصاصی</label>
-      <textarea class="form-input" id="new-addresses" placeholder="هر مورد در یک خط" data-placeholder-en="One per line" data-placeholder-fa="هر مورد در یک خط"></textarea>
-    </div>
-    <button class="btn btn-primary" onclick="createLink()" style="width:100%;margin-top:8px;justify-content:center" data-en="Create Inbound" data-fa="ساخت اینباند">ساخت اینباند</button>
+    <button class="btn btn-primary" onclick="createLink()" style="width:100%;margin-top:8px;justify-content:center">Create</button>
   </div>
 </div>
 
-<!-- مودال جزئیات -->
 <div class="modal-overlay" id="detail-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative;max-width:540px">
     <button class="modal-close" onclick="$('#detail-modal').classList.remove('show')">x</button>
-    <div class="modal-title" id="detail-title" data-en="Inbound Details" data-fa="جزئیات اینباند">جزئیات اینباند</div>
+    <div class="modal-title" id="detail-title">Inbound Details</div>
     <div id="detail-content"></div>
   </div>
 </div>
 
-<!-- مودال کیوآرکد -->
 <div class="modal-overlay" id="qr-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#qr-modal').classList.remove('show')">x</button>
-    <div class="modal-title" data-en="QR Code" data-fa="کد QR">کد QR</div>
+    <div class="modal-title">QR Code</div>
     <div class="qr-box"><img id="qr-img" src="" alt="QR"></div>
     <div style="margin-top:14px;text-align:center;display:flex;gap:8px;justify-content:center">
-      <button class="btn btn-primary btn-sm" onclick="downloadQR()" style="padding:8px 20px" data-en="Download" data-fa="دانلود">دانلود</button>
-      <button class="btn btn-secondary btn-sm" onclick="$('#qr-modal').classList.remove('show')" style="padding:8px 20px" data-en="Close" data-fa="بستن">بستن</button>
+      <button class="btn btn-primary btn-sm" onclick="downloadQR()" style="padding:8px 20px">Download</button>
+      <button class="btn btn-secondary btn-sm" onclick="$('#qr-modal').classList.remove('show')" style="padding:8px 20px">Close</button>
     </div>
   </div>
 </div>
 
-<!-- مودال ویرایش -->
 <div class="modal-overlay" id="edit-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#edit-modal').classList.remove('show')">x</button>
-    <div class="modal-title" id="edit-title" data-en="Edit Inbound" data-fa="ویرایش اینباند">Edit Inbound</div>
+    <div class="modal-title" id="edit-title">Edit Inbound</div>
     <input type="hidden" id="edit-uid">
     <div class="form-group">
-      <label class="form-label" data-en="Name" data-fa="نام">Name</label>
+      <label class="form-label">Name</label>
       <input class="form-input" id="edit-name" readonly style="opacity:0.6;cursor:not-allowed">
     </div>
     <div class="form-row">
       <div class="form-group" style="flex:1">
-        <label class="form-label" data-en="Allowed Volume" data-fa="حجم مجاز">حجم مجاز</label>
-        <input class="form-input" id="edit-limit" type="number" min="0" step="0.1" placeholder="۰ = نامحدود" data-placeholder-en="0 = Unlimited" data-placeholder-fa="۰ = نامحدود">
+        <label class="form-label">Traffic Limit</label>
+        <input class="form-input" id="edit-limit" type="number" min="0" step="0.1" placeholder="0 = Unlimited">
       </div>
       <div class="form-group" style="min-width:80px;max-width:100px">
-        <label class="form-label" data-en="Unit" data-fa="واحد">واحد</label>
+        <label class="form-label">Unit</label>
         <select class="form-select" id="edit-unit"><option value="GB">GB</option></select>
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label" data-en="Max Connections" data-fa="حداکثر اتصال">حداکثر اتصال</label>
-      <input class="form-input" id="edit-maxconn" type="number" min="0" step="1" placeholder="۰ = نامحدود" data-placeholder-en="0 = Unlimited" data-placeholder-fa="۰ = نامحدود">
-    </div>
-    <!-- ویرایش پورت -->
-    <div class="form-group">
-      <label class="form-label" data-en="Connection Port" data-fa="پورت اتصال">پورت اتصال</label>
-      <select class="form-select" id="edit-port-select" onchange="toggleCustomPort(this, 'edit')">
-        <optgroup label="پورت‌های امن (TLS)">
-          <option value="443">443</option>
-          <option value="8443">8443</option>
-          <option value="2096">2096</option>
-        </optgroup>
-        <optgroup label="پورت‌های معمولی (Non-TLS)">
-          <option value="80">80</option>
-          <option value="2082">2082</option>
-          <option value="2086">2086</option>
-          <option value="2095">2095</option>
-          <option value="8880">8880</option>
-          <option value="2052">2052</option>
-          <option value="2087">2087</option>
-          <option value="2053">2053</option>
-          <option value="8443">8443</option>
-        </optgroup>
-        <option value="custom">سفارشی (Custom)</option>
-      </select>
-      <input id="edit-port-custom" type="number" placeholder="مثلاً 8443" style="display:none; margin-top:5px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text);" />
-    </div>
-    <!-- ویرایش Fingerprint -->
-    <div class="form-group">
-      <label class="form-label" data-en="Fingerprint" data-fa="اثر انگشت">Fingerprint</label>
-      <select class="form-select" id="edit-fingerprint">
-        <option value="chrome">Chrome</option>
-        <option value="firefox">Firefox</option>
-        <option value="safari">Safari</option>
-        <option value="ios">iOS Device (پیش‌فرض)</option>
-        <option value="android">Android Device</option>
-        <option value="edge">Microsoft Edge</option>
-        <option value="360">Browser 360</option>
-        <option value="qq">QQ Browser</option>
-        <option value="random">Random (اتفاقی)</option>
-        <option value="randomized">Randomized</option>
-      </select>
+      <label class="form-label">Max IPs</label>
+      <input class="form-input" id="edit-maxconn" type="number" min="0" step="1" placeholder="0 = Unlimited">
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn btn-primary" onclick="saveEdit()" style="flex:1;justify-content:center" data-en="Save" data-fa="ذخیره">Save</button>
-      <button class="btn btn-danger" onclick="resetEditTraffic()" style="justify-content:center" data-en="Reset Traffic" data-fa="ریست ترافیک">ریست ترافیک</button>
+      <button class="btn btn-primary" onclick="saveEdit()" style="flex:1;justify-content:center">Save</button>
+      <button class="btn btn-danger" onclick="resetEditTraffic()" style="justify-content:center">Reset Traffic</button>
     </div>
   </div>
 </div>
 
-<!-- مودال افزودن آی پی تمیز -->
 <div class="modal-overlay" id="add-address-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#add-address-modal').classList.remove('show')">x</button>
@@ -1344,46 +1194,19 @@ let lang=localStorage.getItem('ren_lang')||'en';
 let theme=localStorage.getItem('ren_theme')||'dark';
 let allLinks=[];let currentFilter='all';let statsData={};let trafficChart=null;
 
-function setLang(l){
-  lang=l;
-  document.getElementById('lang-en').classList.toggle('active',l==='en');
-  document.getElementById('lang-fa').classList.toggle('active',l==='fa');
-  document.body.dir=l==='fa'?'rtl':'ltr';
-  
-  // ترجمه متون معمولی درون المان‌ها
-  document.querySelectorAll('[data-en]').forEach(el=>{
-    const v=el.getAttribute('data-'+l);
-    if(v) el.textContent=v;
-  });
-
-  // ترجمه پِلیس‌هولدرها (Placeholder) درون اینپوت‌ها برای فارسی‌سازی کامل فیلدها
-  document.querySelectorAll('[data-placeholder-en]').forEach(el=>{
-    const p=el.getAttribute('data-placeholder-'+l);
-    if(p) el.setAttribute('placeholder', p);
-  });
-
-  localStorage.setItem('ren_lang',l);
-}
-
+function setLang(l){lang=l;document.getElementById('lang-en').classList.toggle('active',l==='en');document.getElementById('lang-fa').classList.toggle('active',l==='fa');document.body.dir=l==='fa'?'rtl':'ltr';document.querySelectorAll('[data-en]').forEach(el=>{const v=el.getAttribute('data-'+l);if(v)el.textContent=v});localStorage.setItem('ren_lang',l)}
 function applyTheme(t){theme=t;document.documentElement.setAttribute('data-theme',t);localStorage.setItem('ren_theme',t);const btn=$('#theme-btn');if(btn)btn.innerHTML=t==='dark'?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'}
 function toggleTheme(){applyTheme(theme==='dark'?'light':'dark')}
-function showAddModal(){
-  // reset fields
-  ['new-label','new-limit','new-maxconn','new-addresses'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});
-  document.getElementById('new-port-select').value='443';
-  document.getElementById('new-port-custom').style.display='none';
-  document.getElementById('new-fingerprint').value='ios';
-  document.getElementById('add-modal').classList.add('show');
-}
+function showAddModal(){$('#add-modal').classList.add('show')}
 function setFilter(f,el){currentFilter=f;document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');filterInbounds()}
 function filterInbounds(){const q=($('#inbound-search')?.value||'').toLowerCase();let filtered=allLinks;if(currentFilter==='active')filtered=filtered.filter(l=>l.active);if(currentFilter==='disabled')filtered=filtered.filter(l=>!l.active);if(q)filtered=filtered.filter(l=>l.label.toLowerCase().includes(q)||l.uuid.toLowerCase().includes(q));renderLinks(filtered)}
 function fmtBytes(b){return b>1073741824?(b/1073741824).toFixed(2)+' GB':b>1048576?(b/1048576).toFixed(2)+' MB':(b/1024).toFixed(1)+' KB'}
-function fmtLimit(b){if(b===0)return lang==='fa'?'نامحدود':'Unlimited';const gb=b/1073741824;return(gb%1===0?gb.toFixed(0):gb.toFixed(1))+' GB'}
+function fmtLimit(b){if(b===0)return'Unlimited';const gb=b/1073741824;return(gb%1===0?gb.toFixed(0):gb.toFixed(1))+' GB'}
 
 const $=s=>document.querySelector(s);
 const $$=s=>document.querySelectorAll(s);
 $$('.nav-item').forEach(el=>el.addEventListener('click',()=>switchPage(el.dataset.page)));
-function switchPage(id){$$('.page').forEach(p=>p.classList.remove('active'));$(`#page-${id}`)?.classList.add('active');$$('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===id));$('#sidebar').classList.remove('open');$('#sidebar-overlay').classList.remove('open')}
+function switchPage(id){$$('.page').forEach(p=>p.classList.remove('active'));$(`#page-${id}`)?.classList.add('active');$$('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===id));$('#sidebar').classList.remove('open');$('#sidebar-overlay').classList.remove('show')}
 function toast(msg,err=false){const t=$('#toast');t.textContent=msg;t.className='toast'+(err?' error':'')+' show';setTimeout(()=>t.classList.remove('show'),3000)}
 function esc(s){return s.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
@@ -1396,7 +1219,7 @@ async function loadStats(){
     pulse($('#s-uptime'),statsData.uptime);
     pulse($('#s-domain'),statsData.domain);
     $('#links-badge').textContent=statsData.links_count;
-    $('#last-update').textContent=(lang==='fa'?'آخرین بروزرسانی: ':'بروزرسانی شد: ')+new Date().toLocaleTimeString(lang==='fa'?'fa-IR':'en-US');
+    $('#last-update').textContent=(lang==='fa'?'آخرین بروزرسانی: ':'Updated: ')+new Date().toLocaleTimeString(lang==='fa'?'fa-IR':'en-US');
     if($('#t-traffic'))$('#t-traffic').textContent=statsData.total_traffic_mb+' MB';
     if($('#t-reqs'))$('#t-reqs').textContent=statsData.total_requests.toLocaleString();
     if($('#t-uptime'))$('#t-uptime').textContent=statsData.uptime;
@@ -1427,7 +1250,7 @@ function renderLinks(links){
     <td><span class="tag tag-vless">VLESS</span></td>
     <td><div class="usage-pill"><span class="used">${r.uF}</span><div class="bar"><div class="fill" style="width:${r.pct}%;background:${r.col}"></div></div><span class="limit">${r.lF}</span></div></td>
     <td style="font-size:12px;font-weight:600;color:${r.maxConn>0&&r.curConn>=r.maxConn?'var(--red)':'var(--text2)'}">${r.curConn}/${r.maxConn||'∞'}</td>
-    <td><span class="tag ${r.l.active?'tag-active':'tag-disabled'}">${r.l.active ? (lang==='fa'?'روشن':'On') : (lang==='fa'?'خاموش':'Off')}</span></td>
+    <td><span class="tag ${r.l.active?'tag-active':'tag-disabled'}">${r.l.active?'On':'Off'}</span></td>
     <td><div style="display:flex;gap:3px;align-items:center">
       <button class="toggle ${r.l.active?'on':''}" data-uid="${r.l.uuid}" onclick="toggleLink(this)" title="Toggle"></button>
       <button class="btn btn-secondary btn-sm" onclick="showEditModal('${r.l.uuid}')" title="Edit" style="background:rgba(251,191,36,0.1);color:var(--yellow);border:1px solid rgba(251,191,36,0.2)">e</button>
@@ -1475,50 +1298,17 @@ async function toggleLink(el){
 async function quickCreate(limit,unit){
   const names=['Ali','Sara','Reza','Nima','Mina','Arash','Yalda','Dariush','Cyrus','Shirin'];
   const name=names[Math.floor(Math.random()*names.length)]+'-'+Math.floor(Math.random()*100);
-  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:name,limit_value:limit,limit_unit:unit,port:443,security:'tls',fingerprint:'chrome'})});if(!r.ok)throw new Error();toast((lang==='fa'?'ساخته شد: ':'Created: ')+name);await loadLinks();await loadStats();}catch(e){toast('Error',true)}
-}
-
-function toggleCustomPort(select, prefix) {
-  const customInput = document.getElementById(prefix + '-port-custom');
-  if (select.value === 'custom') {
-    customInput.style.display = 'block';
-  } else {
-    customInput.style.display = 'none';
-  }
+  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:name,limit_value:limit,limit_unit:unit})});if(!r.ok)throw new Error();toast('Created: '+name);await loadLinks();await loadStats();}catch(e){toast('Error',true)}
 }
 
 async function createLink(){
   const label=$('#new-label').value.trim()||'New Link';const val=parseFloat($('#new-limit').value)||0;const unit='GB';const maxconn=parseInt($('#new-maxconn').value)||0;
-  const addresses=$("#new-addresses").value.split("\n").map(v=>v.trim()).filter(Boolean);
-  if(!/^[a-zA-Z0-9\-_. ]+$/.test(label)){toast(lang==='fa'?'فقط حروف و اعداد انگلیسی مجاز است':'Only English letters allowed',true);return;}
-  
-  // پورت
-  let portSelect = document.getElementById('new-port-select');
-  let portValue = portSelect.value;
-  let port, security;
-  if (portValue === 'custom') {
-    port = parseInt(document.getElementById('new-port-custom').value) || 443;
-    // فرض می‌کنیم کاربر می‌داند امن است یا نه، ولی برای امنیت پیش‌فرض TLS می‌گیریم
-    security = 'tls';
-  } else {
-    port = parseInt(portValue);
-    const tlsPorts = [443, 8443, 2096];
-    security = tlsPorts.includes(port) ? 'tls' : 'none';
-  }
-  const fingerprint = document.getElementById('new-fingerprint').value;
-  
-  try{
-    const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:val,limit_unit:unit,max_connections:maxconn,addresses,port,security,fingerprint})});
-    if(!r.ok)throw new Error();
-    toast(lang==='fa'?'ایجاد شد':'Created');
-    $('#new-label').value='';$('#new-limit').value='';$('#new-maxconn').value='';$('#new-addresses').value='';
-    $('#add-modal').classList.remove('show');
-    await loadLinks();await loadStats();
-  }catch(e){toast('Error',true)}
+  if(!/^[a-zA-Z0-9\-_. ]+$/.test(label)){toast('Only English letters allowed',true);return;}
+  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:val,limit_unit:unit,max_connections:maxconn})});if(!r.ok)throw new Error();toast('Created');$('#new-label').value='';$('#new-limit').value='';$('#new-maxconn').value='';$('#add-modal').classList.remove('show');await loadLinks();await loadStats();}catch(e){toast('Error',true)}
 }
 
-async function resetUsage(uid){try{await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset_usage:true})});toast('ریست شد');await loadLinks();}catch(e){}}
-async function deleteLink(uid){if(!confirm(lang==='fa'?'آیا از حذف این اینباند اطمینان دارید؟':'Delete this inbound?'))return;try{await fetch(`/api/links/${uid}`,{method:'DELETE'});toast(lang==='fa'?'حذف شد':'Deleted');await loadLinks();await loadStats();}catch(e){}}
+async function resetUsage(uid){try{await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset_usage:true})});toast('Reset');await loadLinks();}catch(e){}}
+async function deleteLink(uid){if(!confirm('Delete this inbound?'))return;try{await fetch(`/api/links/${uid}`,{method:'DELETE'});toast('Deleted');await loadLinks();await loadStats();}catch(e){}}
 
 function showEditModal(uid){
   const l=allLinks.find(x=>x.uuid===uid);if(!l)return;
@@ -1528,23 +1318,7 @@ function showEditModal(uid){
   $('#edit-limit').value=l.limit_bytes>0?gb:'';
   $('#edit-unit').value='GB';
   $('#edit-maxconn').value=l.max_connections>0?l.max_connections:'';
-  
-  // تنظیم پورت
-  const portSelect = document.getElementById('edit-port-select');
-  const portCustom = document.getElementById('edit-port-custom');
-  const presetPorts = [443,8443,2096,80,2082,2086,2095,8880,2052,2087,2053];
-  if (presetPorts.includes(l.port)) {
-    portSelect.value = String(l.port);
-    portCustom.style.display = 'none';
-  } else {
-    portSelect.value = 'custom';
-    portCustom.style.display = 'block';
-    portCustom.value = l.port;
-  }
-  // تنظیم fingerprint
-  document.getElementById('edit-fingerprint').value = l.fingerprint || 'ios';
-  
-  $('#edit-title').textContent=(lang==='fa'?'ویرایش: ':'Edit: ')+l.label;
+  $('#edit-title').textContent='Edit: '+l.label;
   $('#edit-modal').classList.add('show');
 }
 
@@ -1553,25 +1327,10 @@ async function saveEdit(){
   const val=parseFloat($('#edit-limit').value)||0;
   const unit=$('#edit-unit').value;
   const maxconn=parseInt($('#edit-maxconn').value)||0;
-  
-  // پورت
-  let portSelect = document.getElementById('edit-port-select');
-  let portValue = portSelect.value;
-  let port, security;
-  if (portValue === 'custom') {
-    port = parseInt(document.getElementById('edit-port-custom').value) || 443;
-    security = 'tls';
-  } else {
-    port = parseInt(portValue);
-    const tlsPorts = [443, 8443, 2096];
-    security = tlsPorts.includes(port) ? 'tls' : 'none';
-  }
-  const fingerprint = document.getElementById('edit-fingerprint').value;
-  
   try{
-    const r=await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit_value:val,limit_unit:unit,max_connections:maxconn,port,security,fingerprint})});
+    const r=await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit_value:val,limit_unit:unit,max_connections:maxconn})});
     if(!r.ok)throw new Error();
-    toast(lang==='fa'?'بروزرسانی شد':'Updated');
+    toast('Updated');
     $('#edit-modal').classList.remove('show');
     await loadLinks();
   }catch(e){toast('Error',true)}
@@ -1579,16 +1338,16 @@ async function saveEdit(){
 
 async function resetEditTraffic(){
   const uid=$('#edit-uid').value;
-  if(!confirm(lang==='fa'?'آیا می‌خواهید مصرف ترافیک صفر شود؟':'Reset traffic usage to zero?'))return;
+  if(!confirm('Reset traffic usage to zero?'))return;
   try{
     const r=await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset_usage:true})});
     if(!r.ok)throw new Error();
-    toast(lang==='fa'?'ترافیک ریست شد':'Traffic reset');
+    toast('Traffic reset');
     await loadLinks();
   }catch(e){toast('Error',true)}
 }
 
-function copyLinkText(txt){navigator.clipboard.writeText(txt).then(()=>toast(lang==='fa'?'در کلیپ‌بورد کپی شد':'Copied to clipboard')).catch(()=>toast('کپی ناموفق',true))}
+function copyLinkText(txt){navigator.clipboard.writeText(txt).then(()=>toast('Copied to clipboard')).catch(()=>toast('Failed to copy',true))}
 function showQRText(txt){if(!txt)return;const box=document.querySelector('.qr-box');$('#qr-img').src='https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='+encodeURIComponent(txt);$('#qr-modal').classList.add('show');}
 function downloadQR(){const img=$('#qr-img');if(!img.src)return;const a=document.createElement('a');a.href=img.src;a.download='ren-qr.png';a.click()}
 async function copySubLink(uid){
@@ -1596,14 +1355,14 @@ async function copySubLink(uid){
     const domain=location.host;
     const subUrl=`https://${domain}/sub/${uid}`;
     await navigator.clipboard.writeText(subUrl);
-    toast(lang==='fa'?'لینک سابسکریپشن کپی شد':'Subscription link copied');
-  }catch(e){toast('کپی ناموفق',true)}
+    toast('Subscription URL copied');
+  }catch(e){toast('Failed to copy',true)}
 }
 
 async function changePassword(){
   const cur=$('#cur-pw').value;const nw=$('#new-pw').value;
-  if(!cur||!nw){toast(lang==='fa'?'لطفا تمام فیلدها را پر کنید':'Fill all fields',true);return;}
-  try{const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Error');}toast(lang==='fa'?'بروزرسانی شد':'Updated');$('#cur-pw').value='';$('#new-pw').value='';}catch(e){toast(e.message,true)}
+  if(!cur||!nw){toast('Fill all fields',true);return;}
+  try{const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Error');}toast('Updated');$('#cur-pw').value='';$('#new-pw').value='';}catch(e){toast(e.message,true)}
 }
 
 applyTheme(theme);setLang(lang);
@@ -1624,14 +1383,14 @@ async function loadAddresses(){
 
 function renderAddresses(){
   const list=$('#address-list');if(!list)return;
-  if(!allAddresses.length){list.innerHTML=`<div style="color:var(--text3);font-size:12px;padding:8px 0">${lang==='fa'?'هیچ آی‌پی اضافه نشده است':'No addresses added'}</div>`;return;}
+  if(!allAddresses.length){list.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No addresses added</div>';return;}
   list.innerHTML=allAddresses.map((a,i)=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:14px">🌐</span>
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(a)}</div>
-          <div style="font-size:10px;color:var(--text3)">${lang==='fa'?'آدرس شماره':'Address #'} ${i+1}</div>
+          <div style="font-size:10px;color:var(--text3)">Address #${i+1}</div>
         </div>
       </div>
       <button class="btn btn-danger btn-sm" onclick="deleteAddress(${i})" style="padding:4px 10px">x</button>
@@ -1639,11 +1398,11 @@ function renderAddresses(){
   `).join('');
 }
 
-function showAddModal(){const ids=["new-label","new-limit","new-maxconn","new-addresses"];ids.forEach(i=>{const e=document.getElementById(i);if(e)e.value=""});document.getElementById("add-modal").classList.add("show");}
+function showAddAddressModal(){$('#new-address').value='';$('#add-address-modal').classList.add('show')}
 
 async function addAddresses(){
   const text=$('#new-address').value.trim();
-  if(!text){toast(lang==='fa'?'حداقل یک آی‌پی یا دامنه وارد کنید':'Enter at least one IP or domain',true);return;}
+  if(!text){toast('Enter at least one IP or domain',true);return;}
   const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
   let added=0;let errors=0;
   for(const addr of lines){
@@ -1653,17 +1412,17 @@ async function addAddresses(){
       if(r.ok)added++;else errors++;
     }catch(e){errors++;}
   }
-  if(added>0)toast(lang==='fa'?`تعداد ${added} آدرس اضافه شد`:`Added ${added} address(es)`);
+  if(added>0)toast(`Added ${added} address(es)`);
   if(errors>0)toast(`${errors} failed`,true);
   if(added>0){$('#add-address-modal').classList.remove('show');await loadAddresses();}
 }
 
 async function deleteAddress(index){
-  if(!confirm(lang==='fa'?'آیا از حذف این آدرس اطمینان دارید؟':'Delete this address?'))return;
+  if(!confirm('Delete this address?'))return;
   try{
     const r=await fetch(`/api/addresses/${index}`,{method:'DELETE'});
     if(!r.ok)throw new Error();
-    toast(lang==='fa'?'حذف شد':'Deleted');
+    toast('Deleted');
     await loadAddresses();
   }catch(e){toast('Error',true)}
 }
