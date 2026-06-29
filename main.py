@@ -119,29 +119,20 @@ def generate_uuid(seed: str | None = None) -> str:
     h = hashlib.sha256(f"{seed}{CONFIG['secret']}".encode()).hexdigest()
     return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
 
-def generate_vless_link(uuid: str, remark: str = "REN", address: str = None) -> str:
+def generate_vless_link(uuid: str, remark: str = "REN", address: str = None, port: int = 443, security: str = "tls", fingerprint: str = "chrome") -> str:
     domain = get_domain()
     addr = address if address else domain
     path = f"/ws/{uuid}"
-    
-    link_data = LINKS.get(uuid, {})
-    security = link_data.get("security", "tls")
-    port = link_data.get("port", 443)
-    fp = link_data.get("fingerprint", "chrome")
-    
     params = {
         "encryption": "none",
         "security": security,
         "type": "ws",
         "host": domain,
         "path": path,
+        "sni": domain,
+        "fp": fingerprint,
+        "alpn": "http/1.1",
     }
-    
-    if security == "tls":
-        params["sni"] = domain
-        params["fp"] = fp
-        params["alpn"] = "http/1.1"
-        
     query = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
     return f"vless://{uuid}@{addr}:{port}?{query}#{quote(remark)}"
 
@@ -160,7 +151,18 @@ def parse_size_to_bytes(value: float, unit: str) -> int:
 async def ensure_default_link():
     async with LINKS_LOCK:
         if not LINKS:
-            LINKS["Default"] = {"label":"پیش‌فرض","limit_bytes":0,"used_bytes":0,"max_connections":0,"addresses":["www.speedtest.net"],"created_at":datetime.now().isoformat(),"active":True, "security": "tls", "port": 443, "fingerprint": "chrome"}
+            LINKS["Default"] = {
+                "label":"پیش‌فرض",
+                "limit_bytes":0,
+                "used_bytes":0,
+                "max_connections":0,
+                "addresses":["www.speedtest.net"],
+                "created_at":datetime.now().isoformat(),
+                "active":True,
+                "port":443,
+                "security":"tls",
+                "fingerprint":"chrome"
+            }
 
 def get_client_ip(websocket: WebSocket) -> str:
     forwarded = websocket.headers.get("x-forwarded-for")
@@ -276,26 +278,37 @@ async def create_link(request: Request, _=Depends(require_auth)):
     addresses=[str(a).strip() for a in (body.get("addresses") or []) if str(a).strip()]
     if max_conn < 0:
         max_conn = 0
-        
-    security = body.get("security") or "tls"
-    port = int(body.get("port") or (443 if security == "tls" else 80))
-    fingerprint = body.get("fingerprint") or "chrome"
-    
+    # New fields: port, security, fingerprint
+    port = int(body.get("port", 443))
+    security = body.get("security", "tls")
+    fingerprint = body.get("fingerprint", "chrome")
     uid = label
     async with LINKS_LOCK:
         LINKS[uid] = {
-            "label": label, 
-            "limit_bytes": limit_bytes, 
-            "used_bytes": 0, 
-            "max_connections": max_conn, 
-            "addresses": addresses, 
-            "created_at": datetime.now().isoformat(), 
+            "label": label,
+            "limit_bytes": limit_bytes,
+            "used_bytes": 0,
+            "max_connections": max_conn,
+            "addresses": addresses,
+            "created_at": datetime.now().isoformat(),
             "active": True,
-            "security": security,
             "port": port,
+            "security": security,
             "fingerprint": fingerprint
         }
-    return {"uuid": uid, "label": label, "limit_bytes": limit_bytes, "used_bytes": 0, "max_connections": max_conn, "active": True, "created_at": LINKS[uid]["created_at"], "vless_link": generate_vless_link(uid, remark=f"REN-{label}")}
+    return {
+        "uuid": uid,
+        "label": label,
+        "limit_bytes": limit_bytes,
+        "used_bytes": 0,
+        "max_connections": max_conn,
+        "active": True,
+        "created_at": LINKS[uid]["created_at"],
+        "port": port,
+        "security": security,
+        "fingerprint": fingerprint,
+        "vless_link": generate_vless_link(uid, remark=f"REN-{label}", port=port, security=security, fingerprint=fingerprint)
+    }
 
 @app.get("/api/links")
 async def list_links(_=Depends(require_auth)):
@@ -303,19 +316,19 @@ async def list_links(_=Depends(require_auth)):
     async with LINKS_LOCK:
         for uid, data in LINKS.items():
             result.append({
-                "uuid": uid, 
-                "label": data["label"], 
-                "limit_bytes": data["limit_bytes"], 
-                "used_bytes": data["used_bytes"], 
+                "uuid": uid,
+                "label": data["label"],
+                "limit_bytes": data["limit_bytes"],
+                "used_bytes": data["used_bytes"],
                 "max_connections": data.get("max_connections", 0),
-                "addresses":data.get("addresses",[]), 
-                "active": data["active"], 
-                "created_at": data["created_at"], 
-                "current_connections": count_connections_for_link(uid), 
-                "vless_link": generate_vless_link(uid, remark=f"REN-{data['label']}"),
-                "security": data.get("security", "tls"),
+                "addresses":data.get("addresses",[]),
+                "active": data["active"],
+                "created_at": data["created_at"],
+                "current_connections": count_connections_for_link(uid),
                 "port": data.get("port", 443),
-                "fingerprint": data.get("fingerprint", "chrome")
+                "security": data.get("security", "tls"),
+                "fingerprint": data.get("fingerprint", "chrome"),
+                "vless_link": generate_vless_link(uid, remark=f"REN-{data['label']}", port=data.get("port", 443), security=data.get("security", "tls"), fingerprint=data.get("fingerprint", "chrome"))
             })
     result.sort(key=lambda x: x["created_at"], reverse=True)
     return {"links": result}
@@ -339,10 +352,11 @@ async def toggle_link(uid: str, request: Request, _=Depends(require_auth)):
         if "max_connections" in body:
             mc = int(body["max_connections"] or 0)
             LINKS[uid]["max_connections"] = mc if mc >= 0 else 0
-        if "security" in body:
-            LINKS[uid]["security"] = body["security"]
+        # New fields update
         if "port" in body:
             LINKS[uid]["port"] = int(body["port"])
+        if "security" in body:
+            LINKS[uid]["security"] = body["security"]
         if "fingerprint" in body:
             LINKS[uid]["fingerprint"] = body["fingerprint"]
     return {"ok": True}
@@ -360,7 +374,13 @@ async def get_subscription(uid: str, _=Depends(require_auth)):
         link = LINKS.get(uid)
         if link is None:
             raise HTTPException(status_code=404, detail="link not found")
-    vless_link = generate_vless_link(uid, remark=f"REN-{link['label']}")
+    vless_link = generate_vless_link(
+        uid,
+        remark=f"REN-{link['label']}",
+        port=link.get("port", 443),
+        security=link.get("security", "tls"),
+        fingerprint=link.get("fingerprint", "chrome")
+    )
     used = link["used_bytes"]
     limit = link["limit_bytes"]
     used_mb = round(used / (1024 * 1024), 2)
@@ -375,6 +395,9 @@ async def get_subscription(uid: str, _=Depends(require_auth)):
 # Usage: {pct}%
 # Status: {'Active' if link['active'] else 'Disabled'}
 # Expiry: Unlimited
+# Port: {link.get('port', 443)}
+# Security: {link.get('security', 'tls')}
+# Fingerprint: {link.get('fingerprint', 'chrome')}
 {vless_link}"""
     encoded = base64.b64encode(sub_content.encode()).decode()
     return {
@@ -390,6 +413,9 @@ async def get_subscription(uid: str, _=Depends(require_auth)):
         "active": link["active"],
         "sub_base64": encoded,
         "sub_text": sub_content,
+        "port": link.get("port", 443),
+        "security": link.get("security", "tls"),
+        "fingerprint": link.get("fingerprint", "chrome")
     }
 
 @app.get("/sub/{uid}")
@@ -403,11 +429,25 @@ async def subscription_endpoint(uid: str):
         raise HTTPException(status_code=403, detail="link disabled")
     addresses = list(link.get("addresses") or [])
     sub_links = []
-    server_link = generate_vless_link(uid, remark=f"REN-{link['label']}-Server")
+    # Server (main) link
+    server_link = generate_vless_link(
+        uid,
+        remark=f"REN-{link['label']}-Server",
+        port=link.get("port", 443),
+        security=link.get("security", "tls"),
+        fingerprint=link.get("fingerprint", "chrome")
+    )
     sub_links.append(server_link)
     for i, addr in enumerate(addresses):
         remark = f"REN-{link['label']}-IP{i+1}"
-        vless_link = generate_vless_link(uid, remark=remark, address=addr)
+        vless_link = generate_vless_link(
+            uid,
+            remark=remark,
+            address=addr,
+            port=link.get("port", 443),
+            security=link.get("security", "tls"),
+            fingerprint=link.get("fingerprint", "chrome")
+        )
         sub_links.append(vless_link)
     sub_content = "\n".join(sub_links)
     encoded = base64.b64encode(sub_content.encode()).decode()
@@ -557,6 +597,7 @@ async def websocket_tunnel(websocket: WebSocket, uuid: str):
                     if not has_other:
                         remove_ip_from_link(uid, ip)
 
+# HTML login and dashboard (same as before, but with modifications in the dashboard HTML)
 LOGIN_HTML = r"""<!DOCTYPE html>
 <html lang="fa" dir="rtl" lang="en" data-theme="dark">
 <head>
@@ -726,6 +767,7 @@ html[data-theme="dark"]{--bg:#090d16;--surface:#111827;--surface2:#1f2937;--surf
 html[data-theme="light"]{--bg:#f3f4f6;--surface:#ffffff;--surface2:#f9fafb;--surface3:#e5e7eb;--border:rgba(0,0,0,0.06);--border2:rgba(0,0,0,0.12);--text:#111827;--text2:#4b5563;--text3:#9ca3af;--primary:#4f46e5;--primary-glow:rgba(79,70,229,0.1);--primary-dim:rgba(79,70,229,0.06);--accent:#4338ca;--green:#10b981;--green-dim:rgba(16,185,129,0.06);--red:#dc2626;--red-dim:rgba(220,38,38,0.06);--yellow:#d97706;--sidebar-bg:#ffffff;--shadow:0 4px 15px rgba(0,0,0,0.05)}
 html,body{height:100%}
 
+/* یکسان‌سازی فونت کل سیستم برای برطرف کردن تفاوت فونت بخش main با سایر بخش‌ها */
 body, .main, .sidebar, .page, .card, .form-input, .btn, .table, .modal, .nav-item, .page-title, .page-sub, .stat-label, .stat-value, .card-title, .form-label {
     font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
@@ -826,7 +868,7 @@ body[dir="rtl"] .table th {text-align:right}
 .toggle::after{content:'';position:absolute;width:12px;height:12px;border-radius:50%;background:var(--text3);top:2px;left:2px;transition:all .3s cubic-bezier(0.4,0,0.2,1)}
 .toggle.on{background:var(--green);border-color:var(--green);box-shadow:0 0 12px rgba(16,185,129,0.3)}
 body[dir="ltr"] .toggle.on::after{left:18px;background:#fff}
-body[dir="gzip"] .toggle.on::after{left:2px;background:#fff}
+body[dir="rtl"] .toggle.on::after{left:2px;background:#fff}
 body[dir="rtl"] .toggle::after{right:2px;left:auto}
 body[dir="rtl"] .toggle.on::after{right:18px;left:auto;background:#fff}
 
@@ -1001,6 +1043,7 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
 </aside>
 
 <main class="main">
+  <!-- صفحه داشبورد -->
   <section class="page active" id="page-dashboard">
     <div class="page-header">
       <div>
@@ -1046,6 +1089,7 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
     </div>
   </section>
 
+  <!-- صفحه اینباندها -->
   <section class="page" id="page-inbounds">
     <div class="page-header">
       <div>
@@ -1090,6 +1134,7 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
     </div>
   </section>
 
+  <!-- صفحه ترافیک -->
   <section class="page" id="page-traffic">
     <div class="page-header"><div><div class="page-title" data-en="Traffic" data-fa="ترافیک">ترافیک</div><div class="page-sub" data-en="Traffic statistics" data-fa="آمار و گزارشات مصارف ترافیک">Traffic statistics</div></div></div>
     <div class="card">
@@ -1100,6 +1145,7 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
     </div>
   </section>
 
+  <!-- صفحه امنیت -->
   <section class="page" id="page-security">
     <div class="page-header"><div><div class="page-title" data-en="Security" data-fa="امنیت">امنیت</div><div class="page-sub" data-en="Change Panel Password" data-fa="تغییر رمز عبور پنل مدیریتی">تغییر رمز پنل</div></div></div>
     <div class="card" style="max-width:400px">
@@ -1116,6 +1162,7 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
   </section>
 </main>
 
+<!-- مودال افزودن اینباند -->
 <div class="modal-overlay" id="add-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#add-modal').classList.remove('show')">x</button>
@@ -1134,29 +1181,49 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
         <select class="form-select" id="new-unit"><option value="GB">GB</option></select>
       </div>
     </div>
-    <div class="form-row" style="margin-top: 12px; margin-bottom: 12px;">
-      <div class="form-group" style="flex:1">
-        <label class="form-label" data-en="Port / Security" data-fa="امنیت / پورت">امنیت / پورت</label>
-        <select class="form-select" id="new-security-port">
-          <option value="tls:443">TLS (Port 443)</option>
-          <option value="none:80">Non-TLS (Port 80)</option>
-        </select>
-      </div>
-      <div class="form-group" style="flex:1">
-        <label class="form-label" data-en="Fingerprint" data-fa="فینگرپرینت">Fingerprint</label>
-        <select class="form-select" id="new-fp">
-          <option value="chrome">Chrome</option>
-          <option value="firefox">Firefox</option>
-          <option value="safari">Safari</option>
-          <option value="edge">Edge</option>
-          <option value="android">Android</option>
-          <option value="random">Random</option>
-        </select>
-      </div>
-    </div>
     <div class="form-group">
       <label class="form-label" data-en="Max Connections" data-fa="حداکثر اتصال">حداکثر اتصال</label>
       <input class="form-input" id="new-maxconn" type="number" min="0" step="1" placeholder="۰ = نامحدود" data-placeholder-en="0 = Unlimited" data-placeholder-fa="۰ = نامحدود">
+    </div>
+    <!-- انتخاب پورت -->
+    <div class="form-group">
+      <label class="form-label" data-en="Connection Port" data-fa="پورت اتصال">پورت اتصال</label>
+      <select class="form-select" id="new-port-select" onchange="toggleCustomPort(this, 'new')">
+        <optgroup label="پورت‌های امن (TLS)">
+          <option value="443">443</option>
+          <option value="8443">8443</option>
+          <option value="2096">2096</option>
+        </optgroup>
+        <optgroup label="پورت‌های معمولی (Non-TLS)">
+          <option value="80">80</option>
+          <option value="2082">2082</option>
+          <option value="2086">2086</option>
+          <option value="2095">2095</option>
+          <option value="8880">8880</option>
+          <option value="2052">2052</option>
+          <option value="2087">2087</option>
+          <option value="2053">2053</option>
+          <option value="8443">8443</option>
+        </optgroup>
+        <option value="custom">سفارشی (Custom)</option>
+      </select>
+      <input id="new-port-custom" type="number" placeholder="مثلاً 8443" style="display:none; margin-top:5px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text);" />
+    </div>
+    <!-- انتخاب Fingerprint -->
+    <div class="form-group">
+      <label class="form-label" data-en="Fingerprint" data-fa="اثر انگشت">Fingerprint</label>
+      <select class="form-select" id="new-fingerprint">
+        <option value="chrome">Chrome</option>
+        <option value="firefox">Firefox</option>
+        <option value="safari">Safari</option>
+        <option value="ios" selected>iOS Device (پیش‌فرض)</option>
+        <option value="android">Android Device</option>
+        <option value="edge">Microsoft Edge</option>
+        <option value="360">Browser 360</option>
+        <option value="qq">QQ Browser</option>
+        <option value="random">Random (اتفاقی)</option>
+        <option value="randomized">Randomized</option>
+      </select>
     </div>
     <div class="form-group">
       <label class="form-label" data-en="Dedicated IP" data-fa="آی‌پی اختصاصی">آی‌پی اختصاصی</label>
@@ -1166,6 +1233,7 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
   </div>
 </div>
 
+<!-- مودال جزئیات -->
 <div class="modal-overlay" id="detail-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative;max-width:540px">
     <button class="modal-close" onclick="$('#detail-modal').classList.remove('show')">x</button>
@@ -1174,6 +1242,7 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
   </div>
 </div>
 
+<!-- مودال کیوآرکد -->
 <div class="modal-overlay" id="qr-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#qr-modal').classList.remove('show')">x</button>
@@ -1186,6 +1255,7 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
   </div>
 </div>
 
+<!-- مودال ویرایش -->
 <div class="modal-overlay" id="edit-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#edit-modal').classList.remove('show')">x</button>
@@ -1205,29 +1275,49 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
         <select class="form-select" id="edit-unit"><option value="GB">GB</option></select>
       </div>
     </div>
-    <div class="form-row" style="margin-top: 12px; margin-bottom: 12px;">
-      <div class="form-group" style="flex:1">
-        <label class="form-label" data-en="Port / Security" data-fa="امنیت / پورت">امنیت / پورت</label>
-        <select class="form-select" id="edit-security-port">
-          <option value="tls:443">TLS (Port 443)</option>
-          <option value="none:80">Non-TLS (Port 80)</option>
-        </select>
-      </div>
-      <div class="form-group" style="flex:1">
-        <label class="form-label" data-en="Fingerprint" data-fa="فینگرپرینت">Fingerprint</label>
-        <select class="form-select" id="edit-fp">
-          <option value="chrome">Chrome</option>
-          <option value="firefox">Firefox</option>
-          <option value="safari">Safari</option>
-          <option value="edge">Edge</option>
-          <option value="android">Android</option>
-          <option value="random">Random</option>
-        </select>
-      </div>
-    </div>
     <div class="form-group">
       <label class="form-label" data-en="Max Connections" data-fa="حداکثر اتصال">حداکثر اتصال</label>
       <input class="form-input" id="edit-maxconn" type="number" min="0" step="1" placeholder="۰ = نامحدود" data-placeholder-en="0 = Unlimited" data-placeholder-fa="۰ = نامحدود">
+    </div>
+    <!-- ویرایش پورت -->
+    <div class="form-group">
+      <label class="form-label" data-en="Connection Port" data-fa="پورت اتصال">پورت اتصال</label>
+      <select class="form-select" id="edit-port-select" onchange="toggleCustomPort(this, 'edit')">
+        <optgroup label="پورت‌های امن (TLS)">
+          <option value="443">443</option>
+          <option value="8443">8443</option>
+          <option value="2096">2096</option>
+        </optgroup>
+        <optgroup label="پورت‌های معمولی (Non-TLS)">
+          <option value="80">80</option>
+          <option value="2082">2082</option>
+          <option value="2086">2086</option>
+          <option value="2095">2095</option>
+          <option value="8880">8880</option>
+          <option value="2052">2052</option>
+          <option value="2087">2087</option>
+          <option value="2053">2053</option>
+          <option value="8443">8443</option>
+        </optgroup>
+        <option value="custom">سفارشی (Custom)</option>
+      </select>
+      <input id="edit-port-custom" type="number" placeholder="مثلاً 8443" style="display:none; margin-top:5px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text);" />
+    </div>
+    <!-- ویرایش Fingerprint -->
+    <div class="form-group">
+      <label class="form-label" data-en="Fingerprint" data-fa="اثر انگشت">Fingerprint</label>
+      <select class="form-select" id="edit-fingerprint">
+        <option value="chrome">Chrome</option>
+        <option value="firefox">Firefox</option>
+        <option value="safari">Safari</option>
+        <option value="ios">iOS Device (پیش‌فرض)</option>
+        <option value="android">Android Device</option>
+        <option value="edge">Microsoft Edge</option>
+        <option value="360">Browser 360</option>
+        <option value="qq">QQ Browser</option>
+        <option value="random">Random (اتفاقی)</option>
+        <option value="randomized">Randomized</option>
+      </select>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn btn-primary" onclick="saveEdit()" style="flex:1;justify-content:center" data-en="Save" data-fa="ذخیره">Save</button>
@@ -1236,6 +1326,7 @@ body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
   </div>
 </div>
 
+<!-- مودال افزودن آی پی تمیز -->
 <div class="modal-overlay" id="add-address-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#add-address-modal').classList.remove('show')">x</button>
@@ -1259,11 +1350,13 @@ function setLang(l){
   document.getElementById('lang-fa').classList.toggle('active',l==='fa');
   document.body.dir=l==='fa'?'rtl':'ltr';
   
+  // ترجمه متون معمولی درون المان‌ها
   document.querySelectorAll('[data-en]').forEach(el=>{
     const v=el.getAttribute('data-'+l);
     if(v) el.textContent=v;
   });
 
+  // ترجمه پِلیس‌هولدرها (Placeholder) درون اینپوت‌ها برای فارسی‌سازی کامل فیلدها
   document.querySelectorAll('[data-placeholder-en]').forEach(el=>{
     const p=el.getAttribute('data-placeholder-'+l);
     if(p) el.setAttribute('placeholder', p);
@@ -1274,7 +1367,14 @@ function setLang(l){
 
 function applyTheme(t){theme=t;document.documentElement.setAttribute('data-theme',t);localStorage.setItem('ren_theme',t);const btn=$('#theme-btn');if(btn)btn.innerHTML=t==='dark'?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'}
 function toggleTheme(){applyTheme(theme==='dark'?'light':'dark')}
-function showAddModal(){$('#add-modal').classList.add('show')}
+function showAddModal(){
+  // reset fields
+  ['new-label','new-limit','new-maxconn','new-addresses'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});
+  document.getElementById('new-port-select').value='443';
+  document.getElementById('new-port-custom').style.display='none';
+  document.getElementById('new-fingerprint').value='ios';
+  document.getElementById('add-modal').classList.add('show');
+}
 function setFilter(f,el){currentFilter=f;document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');filterInbounds()}
 function filterInbounds(){const q=($('#inbound-search')?.value||'').toLowerCase();let filtered=allLinks;if(currentFilter==='active')filtered=filtered.filter(l=>l.active);if(currentFilter==='disabled')filtered=filtered.filter(l=>!l.active);if(q)filtered=filtered.filter(l=>l.label.toLowerCase().includes(q)||l.uuid.toLowerCase().includes(q));renderLinks(filtered)}
 function fmtBytes(b){return b>1073741824?(b/1073741824).toFixed(2)+' GB':b>1048576?(b/1048576).toFixed(2)+' MB':(b/1024).toFixed(1)+' KB'}
@@ -1283,7 +1383,7 @@ function fmtLimit(b){if(b===0)return lang==='fa'?'نامحدود':'Unlimited';co
 const $=s=>document.querySelector(s);
 const $$=s=>document.querySelectorAll(s);
 $$('.nav-item').forEach(el=>el.addEventListener('click',()=>switchPage(el.dataset.page)));
-function switchPage(id){$$('.page').forEach(p=>p.classList.remove('active'));$(`#page-${id}`)?.classList.add('active');$$('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===id));$('#sidebar').classList.remove('open');$('#sidebar-overlay').classList.remove('show')}
+function switchPage(id){$$('.page').forEach(p=>p.classList.remove('active'));$(`#page-${id}`)?.classList.add('active');$$('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===id));$('#sidebar').classList.remove('open');$('#sidebar-overlay').classList.remove('open')}
 function toast(msg,err=false){const t=$('#toast');t.textContent=msg;t.className='toast'+(err?' error':'')+' show';setTimeout(()=>t.classList.remove('show'),3000)}
 function esc(s){return s.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
@@ -1375,20 +1475,46 @@ async function toggleLink(el){
 async function quickCreate(limit,unit){
   const names=['Ali','Sara','Reza','Nima','Mina','Arash','Yalda','Dariush','Cyrus','Shirin'];
   const name=names[Math.floor(Math.random()*names.length)]+'-'+Math.floor(Math.random()*100);
-  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:name,limit_value:limit,limit_unit:unit})});if(!r.ok)throw new Error();toast((lang==='fa'?'ساخته شد: ':'Created: ')+name);await loadLinks();await loadStats();}catch(e){toast('Error',true)}
+  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:name,limit_value:limit,limit_unit:unit,port:443,security:'tls',fingerprint:'chrome'})});if(!r.ok)throw new Error();toast((lang==='fa'?'ساخته شد: ':'Created: ')+name);await loadLinks();await loadStats();}catch(e){toast('Error',true)}
+}
+
+function toggleCustomPort(select, prefix) {
+  const customInput = document.getElementById(prefix + '-port-custom');
+  if (select.value === 'custom') {
+    customInput.style.display = 'block';
+  } else {
+    customInput.style.display = 'none';
+  }
 }
 
 async function createLink(){
   const label=$('#new-label').value.trim()||'New Link';const val=parseFloat($('#new-limit').value)||0;const unit='GB';const maxconn=parseInt($('#new-maxconn').value)||0;
   const addresses=$("#new-addresses").value.split("\n").map(v=>v.trim()).filter(Boolean);
-  
-  const secPort = $('#new-security-port').value.split(':');
-  const security = secPort[0];
-  const port = parseInt(secPort[1]);
-  const fingerprint = $('#new-fp').value;
-  
   if(!/^[a-zA-Z0-9\-_. ]+$/.test(label)){toast(lang==='fa'?'فقط حروف و اعداد انگلیسی مجاز است':'Only English letters allowed',true);return;}
-  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:val,limit_unit:unit,max_connections:maxconn,addresses,security,port,fingerprint})});if(!r.ok)throw new Error();toast(lang==='fa'?'ایجاد شد':'Created');$('#new-label').value='';$('#new-limit').value='';$('#new-maxconn').value='';$('#add-modal').classList.remove('show');await loadLinks();await loadStats();}catch(e){toast('Error',true)}
+  
+  // پورت
+  let portSelect = document.getElementById('new-port-select');
+  let portValue = portSelect.value;
+  let port, security;
+  if (portValue === 'custom') {
+    port = parseInt(document.getElementById('new-port-custom').value) || 443;
+    // فرض می‌کنیم کاربر می‌داند امن است یا نه، ولی برای امنیت پیش‌فرض TLS می‌گیریم
+    security = 'tls';
+  } else {
+    port = parseInt(portValue);
+    const tlsPorts = [443, 8443, 2096];
+    security = tlsPorts.includes(port) ? 'tls' : 'none';
+  }
+  const fingerprint = document.getElementById('new-fingerprint').value;
+  
+  try{
+    const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:val,limit_unit:unit,max_connections:maxconn,addresses,port,security,fingerprint})});
+    if(!r.ok)throw new Error();
+    toast(lang==='fa'?'ایجاد شد':'Created');
+    $('#new-label').value='';$('#new-limit').value='';$('#new-maxconn').value='';$('#new-addresses').value='';
+    $('#add-modal').classList.remove('show');
+    await loadLinks();await loadStats();
+  }catch(e){toast('Error',true)}
 }
 
 async function resetUsage(uid){try{await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset_usage:true})});toast('ریست شد');await loadLinks();}catch(e){}}
@@ -1403,8 +1529,20 @@ function showEditModal(uid){
   $('#edit-unit').value='GB';
   $('#edit-maxconn').value=l.max_connections>0?l.max_connections:'';
   
-  $('#edit-security-port').value = `${l.security||'tls'}:${l.port||443}`;
-  $('#edit-fp').value = l.fingerprint || 'chrome';
+  // تنظیم پورت
+  const portSelect = document.getElementById('edit-port-select');
+  const portCustom = document.getElementById('edit-port-custom');
+  const presetPorts = [443,8443,2096,80,2082,2086,2095,8880,2052,2087,2053];
+  if (presetPorts.includes(l.port)) {
+    portSelect.value = String(l.port);
+    portCustom.style.display = 'none';
+  } else {
+    portSelect.value = 'custom';
+    portCustom.style.display = 'block';
+    portCustom.value = l.port;
+  }
+  // تنظیم fingerprint
+  document.getElementById('edit-fingerprint').value = l.fingerprint || 'ios';
   
   $('#edit-title').textContent=(lang==='fa'?'ویرایش: ':'Edit: ')+l.label;
   $('#edit-modal').classList.add('show');
@@ -1416,13 +1554,22 @@ async function saveEdit(){
   const unit=$('#edit-unit').value;
   const maxconn=parseInt($('#edit-maxconn').value)||0;
   
-  const secPort = $('#edit-security-port').value.split(':');
-  const security = secPort[0];
-  const port = parseInt(secPort[1]);
-  const fingerprint = $('#edit-fp').value;
+  // پورت
+  let portSelect = document.getElementById('edit-port-select');
+  let portValue = portSelect.value;
+  let port, security;
+  if (portValue === 'custom') {
+    port = parseInt(document.getElementById('edit-port-custom').value) || 443;
+    security = 'tls';
+  } else {
+    port = parseInt(portValue);
+    const tlsPorts = [443, 8443, 2096];
+    security = tlsPorts.includes(port) ? 'tls' : 'none';
+  }
+  const fingerprint = document.getElementById('edit-fingerprint').value;
   
   try{
-    const r=await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit_value:val,limit_unit:unit,max_connections:maxconn,security,port,fingerprint})});
+    const r=await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit_value:val,limit_unit:unit,max_connections:maxconn,port,security,fingerprint})});
     if(!r.ok)throw new Error();
     toast(lang==='fa'?'بروزرسانی شد':'Updated');
     $('#edit-modal').classList.remove('show');
@@ -1458,6 +1605,112 @@ async function changePassword(){
   if(!cur||!nw){toast(lang==='fa'?'لطفا تمام فیلدها را پر کنید':'Fill all fields',true);return;}
   try{const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Error');}toast(lang==='fa'?'بروزرسانی شد':'Updated');$('#cur-pw').value='';$('#new-pw').value='';}catch(e){toast(e.message,true)}
 }
+
+applyTheme(theme);setLang(lang);
+loadStats();loadLinks();loadAddresses();
+setInterval(()=>{loadStats()},10000);
+
+let allAddresses=[];
+
+async function loadAddresses(){
+  try{
+    const r=await fetch('/api/addresses');
+    if(!r.ok)throw new Error();
+    const d=await r.json();
+    allAddresses=d.addresses||[];
+    renderAddresses();
+  }catch(e){}
+}
+
+function renderAddresses(){
+  const list=$('#address-list');if(!list)return;
+  if(!allAddresses.length){list.innerHTML=`<div style="color:var(--text3);font-size:12px;padding:8px 0">${lang==='fa'?'هیچ آی‌پی اضافه نشده است':'No addresses added'}</div>`;return;}
+  list.innerHTML=allAddresses.map((a,i)=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:14px">🌐</span>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(a)}</div>
+          <div style="font-size:10px;color:var(--text3)">${lang==='fa'?'آدرس شماره':'Address #'} ${i+1}</div>
+        </div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="deleteAddress(${i})" style="padding:4px 10px">x</button>
+    </div>
+  `).join('');
+}
+
+function showAddModal(){const ids=["new-label","new-limit","new-maxconn","new-addresses"];ids.forEach(i=>{const e=document.getElementById(i);if(e)e.value=""});document.getElementById("add-modal").classList.add("show");}
+
+async function addAddresses(){
+  const text=$('#new-address').value.trim();
+  if(!text){toast(lang==='fa'?'حداقل یک آی‌پی یا دامنه وارد کنید':'Enter at least one IP or domain',true);return;}
+  const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
+  let added=0;let errors=0;
+  for(const addr of lines){
+    if(!/^[a-zA-Z0-9\-_. ]+$/.test(addr)){errors++;continue;}
+    try{
+      const r=await fetch('/api/addresses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:addr})});
+      if(r.ok)added++;else errors++;
+    }catch(e){errors++;}
+  }
+  if(added>0)toast(lang==='fa'?`تعداد ${added} آدرس اضافه شد`:`Added ${added} address(es)`);
+  if(errors>0)toast(`${errors} failed`,true);
+  if(added>0){$('#add-address-modal').classList.remove('show');await loadAddresses();}
+}
+
+async function deleteAddress(index){
+  if(!confirm(lang==='fa'?'آیا از حذف این آدرس اطمینان دارید؟':'Delete this address?'))return;
+  try{
+    const r=await fetch(`/api/addresses/${index}`,{method:'DELETE'});
+    if(!r.ok)throw new Error();
+    toast(lang==='fa'?'حذف شد':'Deleted');
+    await loadAddresses();
+  }catch(e){toast('Error',true)}
+}
+
+async function deleteAllAddresses(){
+  const msg = lang === 'fa' ? 'آیا از حذف تمام آی‌پی‌ها اطمینان دارید؟' : 'Are you sure you want to delete all addresses?';
+  if(!confirm(msg)) return;
+  try{
+    const r = await fetch('/api/addresses', {method: 'DELETE'});
+    if(!r.ok) throw new Error();
+    toast(lang === 'fa' ? 'تمامی آی‌پی‌ها حذف شدند' : 'All addresses deleted');
+    await loadAddresses();
+  }catch(e){toast('Error',true)}
+}
+
+let chartLabels=[];let chartData=[];
+function initChart(){
+  const ctx=document.getElementById('trafficChart');if(!ctx)return;
+  trafficChart=new Chart(ctx,{type:'bar',data:{labels:[],datasets:[{label:'MB',data:[],backgroundColor:'rgba(99,102,241,0.7)',borderColor:'#6366f1',borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'rgba(255,255,255,0.3)',font:{size:10}}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'rgba(255,255,255,0.3)',font:{size:10},callback:v=>v+' MB'},beginAtZero:true}}}});
+}
+initChart();
+function updateChart(){
+  if(!trafficChart||!statsData.hourly_traffic)return;
+  const ht=statsData.hourly_traffic;
+  const sorted=Object.entries(ht).sort((a,b)=>a[0].localeCompare(b[0])).slice(-12);
+  const labels=sorted.map(e=>e[0]);
+  const data=sorted.map(e=>Math.round(e[1]/1048576));
+  trafficChart.data.labels=labels;trafficChart.data.datasets[0].data=data;
+  trafficChart.update();
+}
 </script>
 </body>
 </html>"""
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    token = request.cookies.get(SESSION_COOKIE)
+    if await is_valid_session(token):
+        return RedirectResponse(url="/dashboard")
+    return HTMLResponse(content=LOGIN_HTML)
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request):
+    token = request.cookies.get(SESSION_COOKIE)
+    if not await is_valid_session(token):
+        return RedirectResponse(url="/login")
+    return HTMLResponse(content=DASHBOARD_HTML)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=CONFIG["port"])
