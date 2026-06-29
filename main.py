@@ -673,7 +673,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <title>REN</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
@@ -681,11 +680,18 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 html[data-theme="dark"]{--bg:#090d16;--surface:#111827;--surface2:#1f2937;--surface3:#374151;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.15);--text:rgba(255,255,255,0.95);--text2:rgba(156,163,175,0.8);--text3:rgba(156,163,175,0.4);--primary:#6366f1;--primary-glow:rgba(99,102,241,0.15);--primary-dim:rgba(99,102,241,0.1);--accent:#4f46e5;--green:#10b981;--green-dim:rgba(16,185,129,0.1);--red:#ef4444;--red-dim:rgba(239,68,68,0.1);--yellow:#f59e0b;--sidebar-bg:#0b0f19;--shadow:0 4px 20px rgba(0,0,0,0.25)}
 html[data-theme="light"]{--bg:#f3f4f6;--surface:#ffffff;--surface2:#f9fafb;--surface3:#e5e7eb;--border:rgba(0,0,0,0.06);--border2:rgba(0,0,0,0.12);--text:#111827;--text2:#4b5563;--text3:#9ca3af;--primary:#4f46e5;--primary-glow:rgba(79,70,229,0.1);--primary-dim:rgba(79,70,229,0.06);--accent:#4338ca;--green:#10b981;--green-dim:rgba(16,185,129,0.06);--red:#dc2626;--red-dim:rgba(220,38,38,0.06);--yellow:#d97706;--sidebar-bg:#ffffff;--shadow:0 4px 15px rgba(0,0,0,0.05)}
 html,body{height:100%}
-body{font-family:'Inter','Vazirmatn',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;transition:background .3s,color .3s}
+
+/* یکسان‌سازی فونت کل سیستم برای برطرف کردن تفاوت فونت بخش main با سایر بخش‌ها */
+body, .main, .sidebar, .page, .card, .form-input, .btn, .table, .modal, .nav-item, .page-title, .page-sub, .stat-label, .stat-value, .card-title, .form-label {
+    font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+body{background:var(--bg);color:var(--text);min-height:100vh;display:flex;transition:background .3s,color .3s}
 body[dir="rtl"]{direction:rtl;text-align:right}
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
 
 .sidebar{width:220px;background:var(--sidebar-bg);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;left:0;top:0;bottom:0;z-index:100;transition:background .3s}
+body[dir="rtl"] .sidebar {border-right:none;border-left:1px solid var(--border);left:auto;right:0}
 .sidebar-brand{padding:16px 16px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);position:relative;overflow:hidden}
 .sidebar-brand::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--primary),transparent);animation:shimmer 4s ease-in-out infinite}
 @keyframes shimmer{0%,100%{opacity:0.3;transform:scaleX(0.3)}50%{opacity:0.8;transform:scaleX(1)}}
@@ -697,11 +703,16 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 .sidebar-nav{flex:1;padding:8px;overflow-y:auto}
 .nav-section{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;padding:14px 12px 6px}
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;margin:1px 0;border-radius:8px;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;text-decoration:none;border:none;background:none;width:100%;text-align:left}
+body[dir="rtl"] .nav-item {text-align:right}
 .nav-item:hover{background:var(--primary-dim);color:var(--text)}
-.nav-item.active{background:var(--primary-dim);color:var(--primary);font-weight:600;box-shadow:inset 3px 0 0 var(--primary)}
+.nav-item.active{background:var(--primary-dim);color:var(--primary);font-weight:600;}
+body[dir="ltr"] .nav-item.active{box-shadow:inset 3px 0 0 var(--primary)}
+body[dir="rtl"] .nav-item.active{box-shadow:inset -3px 0 0 var(--primary)}
 .nav-icon{width:18px;height:18px;flex-shrink:0;opacity:0.7}
 .nav-item.active .nav-icon{opacity:1}
-.nav-badge{margin-left:auto;background:var(--surface3);color:var(--text3);font-size:10px;padding:2px 7px;border-radius:8px;font-weight:600}
+body[dir="ltr"] .nav-badge{margin-left:auto}
+body[dir="rtl"] .nav-badge{margin-right:auto}
+.nav-badge{background:var(--surface3);color:var(--text3);font-size:10px;padding:2px 7px;border-radius:8px;font-weight:600}
 .sidebar-footer{padding:12px;border-top:1px solid var(--border)}
 .sidebar-footer .footer-row{display:flex;gap:4px;margin-bottom:8px}
 .sidebar-footer .footer-btn{flex:1;padding:6px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text3);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;text-align:center}
@@ -711,7 +722,10 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 .sidebar-footer .logout-btn:hover{background:var(--red-dim);border-color:rgba(239,68,68,0.2);color:var(--red)}
 .sidebar-footer .version{text-align:center;font-size:10px;color:var(--text3);margin-top:8px;letter-spacing:0.02em}
 
-.main{margin-left:220px;flex:1;padding:24px 28px 48px;min-height:100vh}
+.main{flex:1;padding:24px 28px 48px;min-height:100vh}
+body[dir="ltr"] .main {margin-left:220px}
+body[dir="rtl"] .main {margin-right:220px}
+
 .page{display:none;animation:pageIn .4s ease}
 .page.active{display:block}
 @keyframes pageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -748,6 +762,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 .table-wrap{overflow-x:auto}
 .table{width:100%;border-collapse:collapse}
 .table th{text-align:left;font-size:11px;font-weight:600;color:var(--text3);padding:10px 12px;text-transform:uppercase;letter-spacing:0.04em;border-bottom:1px solid var(--border);background:var(--surface2)}
+body[dir="rtl"] .table th {text-align:right}
 .table td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
 .table tr:last-child td{border-bottom:none}
 .table tbody tr:hover td{background:var(--primary-dim)}
@@ -766,7 +781,10 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 .toggle{width:34px;height:18px;border-radius:10px;background:var(--surface3);position:relative;cursor:pointer;transition:all .3s cubic-bezier(0.4,0,0.2,1);border:1px solid var(--border)}
 .toggle::after{content:'';position:absolute;width:12px;height:12px;border-radius:50%;background:var(--text3);top:2px;left:2px;transition:all .3s cubic-bezier(0.4,0,0.2,1)}
 .toggle.on{background:var(--green);border-color:var(--green);box-shadow:0 0 12px rgba(16,185,129,0.3)}
-.toggle.on::after{left:18px;background:#fff}
+body[dir="ltr"] .toggle.on::after{left:18px;background:#fff}
+body[dir="rtl"] .toggle.on::after{left:2px;background:#fff}
+body[dir="rtl"] .toggle::after{right:2px;left:auto}
+body[dir="rtl"] .toggle.on::after{right:18px;left:auto;background:#fff}
 
 .sys-bar{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
 .sys-bar-fill{height:100%;border-radius:3px;transition:width .4s}
@@ -796,7 +814,9 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:460px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,0.3),0 0 40px var(--primary-glow);transform:scale(0.9);opacity:0;transition:all .4s cubic-bezier(0.34,1.56,0.64,1)}
 .modal-overlay.show .modal{transform:scale(1);opacity:1}
 .modal-title{font-size:15px;font-weight:700;margin-bottom:18px;color:var(--text)}
-.modal-close{position:absolute;top:12px;left:12px;background:var(--surface3);border:1px solid var(--border);color:var(--text3);width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.modal-close{position:absolute;top:12px;background:var(--surface3);border:1px solid var(--border);color:var(--text3);width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .2s}
+body[dir="ltr"] .modal-close {right:12px}
+body[dir="rtl"] .modal-close {left:12px}
 .modal-close:hover{background:var(--red-dim);color:var(--red);border-color:rgba(239,68,68,0.2)}
 .qr-box{text-align:center;padding:24px;background:var(--surface2);border-radius:14px;margin-top:14px;border:1px solid var(--border);transition:all .3s}
 .qr-box:hover{border-color:var(--primary);box-shadow:0 0 20px var(--primary-glow)}
@@ -819,9 +839,13 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 
 .inbounds-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .search-box{flex:1;min-width:180px;position:relative}
-.search-box input{width:100%;padding:8px 12px 8px 32px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:all .2s}
+.search-box input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:all .2s}
+body[dir="ltr"] .search-box input {padding:8px 12px 8px 32px;}
+body[dir="rtl"] .search-box input {padding:8px 32px 8px 12px;}
 .search-box input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}
-.search-box svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text3)}
+.search-box svg{position:absolute;top:50%;transform:translateY(-50%);color:var(--text3)}
+body[dir="ltr"] .search-box svg {left:10px}
+body[dir="rtl"] .search-box svg {right:10px}
 .filter-chips{display:flex;gap:3px;padding:3px 5px;background:var(--surface2);border:1px solid var(--border);border-radius:8px}
 .chip{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;border:none;background:none;transition:all .2s;font-family:inherit}
 .chip.active{background:var(--primary);color:#fff}
@@ -832,7 +856,9 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 .inbound-card-header{display:flex;align-items:center;justify-content:space-between}
 .inbound-card-id{font-size:10px;color:var(--text3);font-weight:600}
 .inbound-card-name{font-size:13px;font-weight:600;color:var(--text)}
-.inbound-card-actions{display:flex;gap:4px;justify-content:flex-end}
+.inbound-card-actions{display:flex;gap:4px;}
+body[dir="ltr"] .inbound-card-actions {justify-content:flex-end}
+body[dir="rtl"] .inbound-card-actions {justify-content:flex-start}
 
 .mobile-header{display:none;position:fixed;top:0;left:0;right:0;height:44px;background:var(--sidebar-bg);border-bottom:1px solid var(--border);z-index:90;align-items:center;justify-content:space-between;padding:0 14px}
 .menu-toggle{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}
@@ -841,8 +867,13 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 
 @media(max-width:768px){
   .sidebar{transform:translateX(-100%);width:220px;z-index:200}
-  .sidebar.open{transform:translateX(0);box-shadow:4px 0 20px rgba(0,0,0,0.4)}
-  .main{margin-left:0;padding-top:60px;padding-left:12px;padding-right:12px}
+  body[dir="rtl"] .sidebar{transform:translateX(100%)}
+  .sidebar.open{transform:translateX(0) !important;}
+  body[dir="ltr"] .sidebar.open{box-shadow:4px 0 20px rgba(0,0,0,0.4)}
+  body[dir="rtl"] .sidebar.open{box-shadow:-4px 0 20px rgba(0,0,0,0.4)}
+  .main{padding-top:60px;padding-left:12px;padding-right:12px}
+  body[dir="ltr"] .main {margin-left:0}
+  body[dir="rtl"] .main {margin-right:0}
   .mobile-header{display:flex}
   .stats-row{grid-template-columns:1fr 1fr}
   .grid-2{grid-template-columns:1fr}
@@ -891,7 +922,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
     </div>
   </div>
   <nav class="sidebar-nav">
-    <div class="nav-section">اصلی</div>
+    <div class="nav-section" data-en="MAIN" data-fa="اصلی">اصلی</div>
     <button class="nav-item active" data-page="dashboard">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       <span data-en="Dashboard" data-fa="داشبورد">داشبورد</span>
@@ -906,10 +937,10 @@ body[dir="rtl"]{direction:rtl;text-align:right}
       <span data-en="Traffic" data-fa="ترافیک">ترافیک</span>
     </button>
     
-    <div class="nav-section">سیستم</div>
+    <div class="nav-section" data-en="SYSTEM" data-fa="سیستم">سیستم</div>
     <button class="nav-item" data-page="security">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      <span data-en="امنیت" data-fa="امنیت">امنیت</span>
+      <span data-en="Security" data-fa="امنیت">امنیت</span>
     </button>
   </nav>
   <div class="sidebar-footer">
@@ -926,6 +957,7 @@ body[dir="rtl"]{direction:rtl;text-align:right}
 </aside>
 
 <main class="main">
+  <!-- صفحه داشبورد -->
   <section class="page active" id="page-dashboard">
     <div class="page-header">
       <div>
@@ -957,50 +989,51 @@ body[dir="rtl"]{direction:rtl;text-align:right}
     </div>
     <div class="grid-2">
       <div class="card">
-        <div class="card-header"><div class="card-title">CPU Usage</div><span id="s-cpu-val" style="font-size:18px;font-weight:700;color:var(--primary)">--%</span></div>
+        <div class="card-header"><div class="card-title" data-en="CPU Usage" data-fa="میزان مصرف پردازنده (CPU)">CPU Usage</div><span id="s-cpu-val" style="font-size:18px;font-weight:700;color:var(--primary)">--%</span></div>
         <div class="sys-bar"><div class="sys-bar-fill" id="s-cpu-bar" style="width:0%;background:var(--primary)"></div></div>
       </div>
       <div class="card">
-        <div class="card-header"><div class="card-title">Memory</div><span id="s-mem-val" style="font-size:18px;font-weight:700;color:var(--green)">--%</span></div>
+        <div class="card-header"><div class="card-title" data-en="Memory" data-fa="میزان مصرف حافظه (Memory)">Memory</div><span id="s-mem-val" style="font-size:18px;font-weight:700;color:var(--green)">--%</span></div>
         <div class="sys-bar"><div class="sys-bar-fill" id="s-mem-bar" style="width:0%;background:var(--green)"></div></div>
       </div>
     </div>
     <div class="card">
-      <div class="card-header"><div class="card-title">Traffic Chart</div></div>
+      <div class="card-header"><div class="card-title" data-en="Traffic Chart" data-fa="نمودار ترافیک">Traffic Chart</div></div>
       <div style="height:180px"><canvas id="trafficChart"></canvas></div>
     </div>
   </section>
 
+  <!-- صفحه اینباندها -->
   <section class="page" id="page-inbounds">
     <div class="page-header">
       <div>
         <div class="page-title" data-en="Inbounds" data-fa="اینباندها">اینباندها</div>
         <div class="page-sub">VLESS over WebSocket</div>
       </div>
-      <button class="btn btn-primary" onclick="showAddModal()">+ Add</button>
+      <button class="btn btn-primary" onclick="showAddModal()" data-en="+ Add" data-fa="+ افزودن">+ Add</button>
     </div>
     <div class="inbounds-toolbar">
       <div class="search-box">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input id="inbound-search" placeholder="Search by name or UUID..." oninput="filterInbounds()">
+        <input id="inbound-search" placeholder="Search by name or UUID..." data-placeholder-en="Search by name or UUID..." data-placeholder-fa="جستجو بر اساس نام یا UUID..." oninput="filterInbounds()">
       </div>
       <div class="filter-chips">
-        <button class="chip active" onclick="setFilter('all',this)">All</button>
-        <button class="chip" onclick="setFilter('active',this)">Active</button>
-        <button class="chip" onclick="setFilter('disabled',this)">Disabled</button>
+        <button class="chip active" onclick="setFilter('all',this)" data-en="All" data-fa="همه">All</button>
+        <button class="chip" onclick="setFilter('active',this)" data-en="Active" data-fa="فعال">Active</button>
+        <button class="chip" onclick="setFilter('disabled',this)" data-en="Disabled" data-fa="غیرفعال">Disabled</button>
       </div>
     </div>
     <div class="card" style="border-radius:12px;overflow:hidden;padding:0">
       <div class="table-wrap">
         <table class="table">
           <thead><tr>
-            <th style="width:32px">ID</th>
-            <th>Remark</th>
-            <th style="width:56px">Type</th>
-            <th>ترافیک</th>
-            <th style="width:80px">IPs</th>
-            <th style="width:64px">Status</th>
-            <th style="width:100px">Actions</th>
+            <th style="width:32px" data-en="ID" data-fa="شناسه">ID</th>
+            <th data-en="Remark" data-fa="نام کاربر">Remark</th>
+            <th style="width:56px" data-en="Type" data-fa="نوع">Type</th>
+            <th data-en="Traffic" data-fa="ترافیک">ترافیک</th>
+            <th style="width:80px" data-en="IPs" data-fa="اتصال‌ها">IPs</th>
+            <th style="width:64px" data-en="Status" data-fa="وضعیت">Status</th>
+            <th style="width:100px" data-en="Actions" data-fa="عملیات">Actions</th>
           </tr></thead>
           <tbody id="links-tbody"></tbody>
         </table>
@@ -1010,117 +1043,124 @@ body[dir="rtl"]{direction:rtl;text-align:right}
         <div class="empty-icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
         </div>
-        <div>No inbounds found</div>
+        <div data-en="No inbounds found" data-fa="هیچ اینباندی یافت نشد">No inbounds found</div>
       </div>
     </div>
   </section>
 
+  <!-- صفحه ترافیک -->
   <section class="page" id="page-traffic">
-    <div class="page-header"><div><div class="page-title">ترافیک</div><div class="page-sub">Traffic statistics</div></div></div>
+    <div class="page-header"><div><div class="page-title" data-en="Traffic" data-fa="ترافیک">ترافیک</div><div class="page-sub" data-en="Traffic statistics" data-fa="آمار و گزارشات مصارف ترافیک">Traffic statistics</div></div></div>
     <div class="card">
-      <div class="card-header"><div class="card-title">Overview</div></div>
-      <div class="status-item"><span class="status-key">Total Traffic</span><span class="status-val" id="t-traffic">-- MB</span></div>
-      <div class="status-item"><span class="status-key">Total Requests</span><span class="status-val" id="t-reqs">--</span></div>
-      <div class="status-item"><span class="status-key">Uptime</span><span class="status-val" id="t-uptime">--</span></div>
+      <div class="card-header"><div class="card-title" data-en="Overview" data-fa="مرور کلی">Overview</div></div>
+      <div class="status-item"><span class="status-key" data-en="Total Traffic" data-fa="ترافیک کل">Total Traffic</span><span class="status-val" id="t-traffic">-- MB</span></div>
+      <div class="status-item"><span class="status-key" data-en="Total Requests" data-fa="کل درخواست‌ها">Total Requests</span><span class="status-val" id="t-reqs">--</span></div>
+      <div class="status-item"><span class="status-key" data-en="Uptime" data-fa="مدت زمان فعالیت (آپتایم)">Uptime</span><span class="status-val" id="t-uptime">--</span></div>
     </div>
   </section>
 
+  <!-- صفحه امنیت -->
   <section class="page" id="page-security">
-    <div class="page-header"><div><div class="page-title">امنیت</div><div class="page-sub">تغییر رمز پنل</div></div></div>
+    <div class="page-header"><div><div class="page-title" data-en="Security" data-fa="امنیت">امنیت</div><div class="page-sub" data-en="Change Panel Password" data-fa="تغییر رمز عبور پنل مدیریتی">تغییر رمز پنل</div></div></div>
     <div class="card" style="max-width:400px">
       <div class="form-group">
-        <label class="form-label">رمز فعلی</label>
-        <input class="form-input" type="password" id="cur-pw" placeholder="رمز فعلی را وارد کنید">
+        <label class="form-label" data-en="Current Password" data-fa="رمز عبور فعلی">رمز فعلی</label>
+        <input class="form-input" type="password" id="cur-pw" placeholder="رمز فعلی را وارد کنید" data-placeholder-en="Enter current password" data-placeholder-fa="رمز فعلی را وارد کنید">
       </div>
       <div class="form-group">
-        <label class="form-label">رمز جدید</label>
-        <input class="form-input" type="password" id="new-pw" placeholder="Min 4 characters">
+        <label class="form-label" data-en="New Password" data-fa="رمز عبور جدید">رمز جدید</label>
+        <input class="form-input" type="password" id="new-pw" placeholder="Min 4 characters" data-placeholder-en="Min 4 characters" data-placeholder-fa="حداقل ۴ کاراکتر">
       </div>
-      <button class="btn btn-primary" onclick="changePassword()" style="margin-top:4px">بروزرسانی رمز</button>
+      <button class="btn btn-primary" onclick="changePassword()" style="margin-top:4px" data-en="Update Password" data-fa="بروزرسانی رمز عبور">بروزرسانی رمز</button>
     </div>
   </section>
 </main>
 
+<!-- مودال افزودن اینباند -->
 <div class="modal-overlay" id="add-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#add-modal').classList.remove('show')">x</button>
-    <div class="modal-title">افزودن اینباند</div>
+    <div class="modal-title" data-en="Add Inbound" data-fa="افزودن اینباند">افزودن اینباند</div>
     <div class="form-group">
-      <label class="form-label">نام کاربر</label>
-      <input class="form-input" id="new-label" placeholder="مثال: کاربر ۱">
+      <label class="form-label" data-en="Username" data-fa="نام کاربر">نام کاربر</label>
+      <input class="form-input" id="new-label" placeholder="مثال: کاربر ۱" data-placeholder-en="e.g. User 1" data-placeholder-fa="مثال: کاربر ۱">
     </div>
     <div class="form-row">
       <div class="form-group" style="flex:1">
-        <label class="form-label">حجم مجاز</label>
-        <input class="form-input" id="new-limit" type="number" min="0" step="0.1" placeholder="۰ = نامحدود">
+        <label class="form-label" data-en="Allowed Volume" data-fa="حجم مجاز">حجم مجاز</label>
+        <input class="form-input" id="new-limit" type="number" min="0" step="0.1" placeholder="۰ = نامحدود" data-placeholder-en="0 = Unlimited" data-placeholder-fa="۰ = نامحدود">
       </div>
       <div class="form-group" style="min-width:80px;max-width:100px">
-        <label class="form-label">واحد</label>
+        <label class="form-label" data-en="Unit" data-fa="واحد">واحد</label>
         <select class="form-select" id="new-unit"><option value="GB">GB</option></select>
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">حداکثر اتصال</label>
-      <input class="form-input" id="new-maxconn" type="number" min="0" step="1" placeholder="۰ = نامحدود">
+      <label class="form-label" data-en="Max Connections" data-fa="حداکثر اتصال">حداکثر اتصال</label>
+      <input class="form-input" id="new-maxconn" type="number" min="0" step="1" placeholder="۰ = نامحدود" data-placeholder-en="0 = Unlimited" data-placeholder-fa="۰ = نامحدود">
     </div>
     <div class="form-group">
-      <label class="form-label">آی‌پی اختصاصی</label>
-      <textarea class="form-input" id="new-addresses" placeholder="هر مورد در یک خط"></textarea>
+      <label class="form-label" data-en="Dedicated IP" data-fa="آی‌پی اختصاصی">آی‌پی اختصاصی</label>
+      <textarea class="form-input" id="new-addresses" placeholder="هر مورد در یک خط" data-placeholder-en="One per line" data-placeholder-fa="هر مورد در یک خط"></textarea>
     </div>
-    <button class="btn btn-primary" onclick="createLink()" style="width:100%;margin-top:8px;justify-content:center">ساخت اینباند</button>
+    <button class="btn btn-primary" onclick="createLink()" style="width:100%;margin-top:8px;justify-content:center" data-en="Create Inbound" data-fa="ساخت اینباند">ساخت اینباند</button>
   </div>
 </div>
 
+<!-- مودال جزئیات -->
 <div class="modal-overlay" id="detail-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative;max-width:540px">
     <button class="modal-close" onclick="$('#detail-modal').classList.remove('show')">x</button>
-    <div class="modal-title" id="detail-title">جزئیات اینباند</div>
+    <div class="modal-title" id="detail-title" data-en="Inbound Details" data-fa="جزئیات اینباند">جزئیات اینباند</div>
     <div id="detail-content"></div>
   </div>
 </div>
 
+<!-- مودال کیوآرکد -->
 <div class="modal-overlay" id="qr-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#qr-modal').classList.remove('show')">x</button>
-    <div class="modal-title">کد QR</div>
+    <div class="modal-title" data-en="QR Code" data-fa="کد QR">کد QR</div>
     <div class="qr-box"><img id="qr-img" src="" alt="QR"></div>
     <div style="margin-top:14px;text-align:center;display:flex;gap:8px;justify-content:center">
-      <button class="btn btn-primary btn-sm" onclick="downloadQR()" style="padding:8px 20px">دانلود</button>
-      <button class="btn btn-secondary btn-sm" onclick="$('#qr-modal').classList.remove('show')" style="padding:8px 20px">بستن</button>
+      <button class="btn btn-primary btn-sm" onclick="downloadQR()" style="padding:8px 20px" data-en="Download" data-fa="دانلود">دانلود</button>
+      <button class="btn btn-secondary btn-sm" onclick="$('#qr-modal').classList.remove('show')" style="padding:8px 20px" data-en="Close" data-fa="بستن">بستن</button>
     </div>
   </div>
 </div>
 
+<!-- مودال ویرایش -->
 <div class="modal-overlay" id="edit-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#edit-modal').classList.remove('show')">x</button>
-    <div class="modal-title" id="edit-title">Edit Inbound</div>
+    <div class="modal-title" id="edit-title" data-en="Edit Inbound" data-fa="ویرایش اینباند">Edit Inbound</div>
     <input type="hidden" id="edit-uid">
     <div class="form-group">
-      <label class="form-label">Name</label>
+      <label class="form-label" data-en="Name" data-fa="نام">Name</label>
       <input class="form-input" id="edit-name" readonly style="opacity:0.6;cursor:not-allowed">
     </div>
     <div class="form-row">
       <div class="form-group" style="flex:1">
-        <label class="form-label">حجم مجاز</label>
-        <input class="form-input" id="edit-limit" type="number" min="0" step="0.1" placeholder="۰ = نامحدود">
+        <label class="form-label" data-en="Allowed Volume" data-fa="حجم مجاز">حجم مجاز</label>
+        <input class="form-input" id="edit-limit" type="number" min="0" step="0.1" placeholder="۰ = نامحدود" data-placeholder-en="0 = Unlimited" data-placeholder-fa="۰ = نامحدود">
       </div>
       <div class="form-group" style="min-width:80px;max-width:100px">
-        <label class="form-label">واحد</label>
+        <label class="form-label" data-en="Unit" data-fa="واحد">واحد</label>
         <select class="form-select" id="edit-unit"><option value="GB">GB</option></select>
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">حداکثر اتصال</label>
-      <input class="form-input" id="edit-maxconn" type="number" min="0" step="1" placeholder="۰ = نامحدود">
+      <label class="form-label" data-en="Max Connections" data-fa="حداکثر اتصال">حداکثر اتصال</label>
+      <input class="form-input" id="edit-maxconn" type="number" min="0" step="1" placeholder="۰ = نامحدود" data-placeholder-en="0 = Unlimited" data-placeholder-fa="۰ = نامحدود">
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn btn-primary" onclick="saveEdit()" style="flex:1;justify-content:center">Save</button>
-      <button class="btn btn-danger" onclick="resetEditTraffic()" style="justify-content:center">ریست شد Traffic</button>
+      <button class="btn btn-primary" onclick="saveEdit()" style="flex:1;justify-content:center" data-en="Save" data-fa="ذخیره">Save</button>
+      <button class="btn btn-danger" onclick="resetEditTraffic()" style="justify-content:center" data-en="Reset Traffic" data-fa="ریست ترافیک">ریست ترافیک</button>
     </div>
   </div>
 </div>
 
+<!-- مودال افزودن آی پی تمیز -->
 <div class="modal-overlay" id="add-address-modal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="$('#add-address-modal').classList.remove('show')">x</button>
@@ -1138,14 +1178,34 @@ let lang=localStorage.getItem('ren_lang')||'en';
 let theme=localStorage.getItem('ren_theme')||'dark';
 let allLinks=[];let currentFilter='all';let statsData={};let trafficChart=null;
 
-function setLang(l){lang=l;document.getElementById('lang-en').classList.toggle('active',l==='en');document.getElementById('lang-fa').classList.toggle('active',l==='fa');document.body.dir=l==='fa'?'rtl':'ltr';document.querySelectorAll('[data-en]').forEach(el=>{const v=el.getAttribute('data-'+l);if(v)el.textContent=v});localStorage.setItem('ren_lang',l)}
+function setLang(l){
+  lang=l;
+  document.getElementById('lang-en').classList.toggle('active',l==='en');
+  document.getElementById('lang-fa').classList.toggle('active',l==='fa');
+  document.body.dir=l==='fa'?'rtl':'ltr';
+  
+  // ترجمه متون معمولی درون المان‌ها
+  document.querySelectorAll('[data-en]').forEach(el=>{
+    const v=el.getAttribute('data-'+l);
+    if(v) el.textContent=v;
+  });
+
+  // ترجمه پِلیس‌هولدرها (Placeholder) درون اینپوت‌ها برای فارسی‌سازی کامل فیلدها
+  document.querySelectorAll('[data-placeholder-en]').forEach(el=>{
+    const p=el.getAttribute('data-placeholder-'+l);
+    if(p) el.setAttribute('placeholder', p);
+  });
+
+  localStorage.setItem('ren_lang',l);
+}
+
 function applyTheme(t){theme=t;document.documentElement.setAttribute('data-theme',t);localStorage.setItem('ren_theme',t);const btn=$('#theme-btn');if(btn)btn.innerHTML=t==='dark'?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>'}
 function toggleTheme(){applyTheme(theme==='dark'?'light':'dark')}
 function showAddModal(){$('#add-modal').classList.add('show')}
 function setFilter(f,el){currentFilter=f;document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');filterInbounds()}
 function filterInbounds(){const q=($('#inbound-search')?.value||'').toLowerCase();let filtered=allLinks;if(currentFilter==='active')filtered=filtered.filter(l=>l.active);if(currentFilter==='disabled')filtered=filtered.filter(l=>!l.active);if(q)filtered=filtered.filter(l=>l.label.toLowerCase().includes(q)||l.uuid.toLowerCase().includes(q));renderLinks(filtered)}
 function fmtBytes(b){return b>1073741824?(b/1073741824).toFixed(2)+' GB':b>1048576?(b/1048576).toFixed(2)+' MB':(b/1024).toFixed(1)+' KB'}
-function fmtLimit(b){if(b===0)return'Unlimited';const gb=b/1073741824;return(gb%1===0?gb.toFixed(0):gb.toFixed(1))+' GB'}
+function fmtLimit(b){if(b===0)return lang==='fa'?'نامحدود':'Unlimited';const gb=b/1073741824;return(gb%1===0?gb.toFixed(0):gb.toFixed(1))+' GB'}
 
 const $=s=>document.querySelector(s);
 const $$=s=>document.querySelectorAll(s);
@@ -1194,7 +1254,7 @@ function renderLinks(links){
     <td><span class="tag tag-vless">VLESS</span></td>
     <td><div class="usage-pill"><span class="used">${r.uF}</span><div class="bar"><div class="fill" style="width:${r.pct}%;background:${r.col}"></div></div><span class="limit">${r.lF}</span></div></td>
     <td style="font-size:12px;font-weight:600;color:${r.maxConn>0&&r.curConn>=r.maxConn?'var(--red)':'var(--text2)'}">${r.curConn}/${r.maxConn||'∞'}</td>
-    <td><span class="tag ${r.l.active?'tag-active':'tag-disabled'}">${r.l.active?'On':'Off'}</span></td>
+    <td><span class="tag ${r.l.active?'tag-active':'tag-disabled'}">${r.l.active ? (lang==='fa'?'روشن':'On') : (lang==='fa'?'خاموش':'Off')}</span></td>
     <td><div style="display:flex;gap:3px;align-items:center">
       <button class="toggle ${r.l.active?'on':''}" data-uid="${r.l.uuid}" onclick="toggleLink(this)" title="Toggle"></button>
       <button class="btn btn-secondary btn-sm" onclick="showEditModal('${r.l.uuid}')" title="Edit" style="background:rgba(251,191,36,0.1);color:var(--yellow);border:1px solid rgba(251,191,36,0.2)">e</button>
@@ -1242,18 +1302,18 @@ async function toggleLink(el){
 async function quickCreate(limit,unit){
   const names=['Ali','Sara','Reza','Nima','Mina','Arash','Yalda','Dariush','Cyrus','Shirin'];
   const name=names[Math.floor(Math.random()*names.length)]+'-'+Math.floor(Math.random()*100);
-  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:name,limit_value:limit,limit_unit:unit})});if(!r.ok)throw new Error();toast('Created: '+name);await loadLinks();await loadStats();}catch(e){toast('Error',true)}
+  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:name,limit_value:limit,limit_unit:unit})});if(!r.ok)throw new Error();toast((lang==='fa'?'ساخته شد: ':'Created: ')+name);await loadLinks();await loadStats();}catch(e){toast('Error',true)}
 }
 
 async function createLink(){
   const label=$('#new-label').value.trim()||'New Link';const val=parseFloat($('#new-limit').value)||0;const unit='GB';const maxconn=parseInt($('#new-maxconn').value)||0;
- const addresses=$("#new-addresses").value.split("\n").map(v=>v.trim()).filter(Boolean);
-  if(!/^[a-zA-Z0-9\-_. ]+$/.test(label)){toast('Only English letters allowed',true);return;}
-  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:val,limit_unit:unit,max_connections:maxconn,addresses})});if(!r.ok)throw new Error();toast('Created');$('#new-label').value='';$('#new-limit').value='';$('#new-maxconn').value='';$('#add-modal').classList.remove('show');await loadLinks();await loadStats();}catch(e){toast('Error',true)}
+  const addresses=$("#new-addresses").value.split("\n").map(v=>v.trim()).filter(Boolean);
+  if(!/^[a-zA-Z0-9\-_. ]+$/.test(label)){toast(lang==='fa'?'فقط حروف و اعداد انگلیسی مجاز است':'Only English letters allowed',true);return;}
+  try{const r=await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,limit_value:val,limit_unit:unit,max_connections:maxconn,addresses})});if(!r.ok)throw new Error();toast(lang==='fa'?'ایجاد شد':'Created');$('#new-label').value='';$('#new-limit').value='';$('#new-maxconn').value='';$('#add-modal').classList.remove('show');await loadLinks();await loadStats();}catch(e){toast('Error',true)}
 }
 
 async function resetUsage(uid){try{await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset_usage:true})});toast('ریست شد');await loadLinks();}catch(e){}}
-async function deleteLink(uid){if(!confirm('Delete this inbound?'))return;try{await fetch(`/api/links/${uid}`,{method:'DELETE'});toast('حذف شد');await loadLinks();await loadStats();}catch(e){}}
+async function deleteLink(uid){if(!confirm(lang==='fa'?'آیا از حذف این اینباند اطمینان دارید؟':'Delete this inbound?'))return;try{await fetch(`/api/links/${uid}`,{method:'DELETE'});toast(lang==='fa'?'حذف شد':'Deleted');await loadLinks();await loadStats();}catch(e){}}
 
 function showEditModal(uid){
   const l=allLinks.find(x=>x.uuid===uid);if(!l)return;
@@ -1263,7 +1323,7 @@ function showEditModal(uid){
   $('#edit-limit').value=l.limit_bytes>0?gb:'';
   $('#edit-unit').value='GB';
   $('#edit-maxconn').value=l.max_connections>0?l.max_connections:'';
-  $('#edit-title').textContent='Edit: '+l.label;
+  $('#edit-title').textContent=(lang==='fa'?'ویرایش: ':'Edit: ')+l.label;
   $('#edit-modal').classList.add('show');
 }
 
@@ -1275,7 +1335,7 @@ async function saveEdit(){
   try{
     const r=await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit_value:val,limit_unit:unit,max_connections:maxconn})});
     if(!r.ok)throw new Error();
-    toast('بروزرسانی شد');
+    toast(lang==='fa'?'بروزرسانی شد':'Updated');
     $('#edit-modal').classList.remove('show');
     await loadLinks();
   }catch(e){toast('Error',true)}
@@ -1283,16 +1343,16 @@ async function saveEdit(){
 
 async function resetEditTraffic(){
   const uid=$('#edit-uid').value;
-  if(!confirm('ریست شد traffic usage to zero?'))return;
+  if(!confirm(lang==='fa'?'آیا می‌خواهید مصرف ترافیک صفر شود؟':'Reset traffic usage to zero?'))return;
   try{
     const r=await fetch(`/api/links/${uid}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reset_usage:true})});
     if(!r.ok)throw new Error();
-    toast('Traffic reset');
+    toast(lang==='fa'?'ترافیک ریست شد':'Traffic reset');
     await loadLinks();
   }catch(e){toast('Error',true)}
 }
 
-function copyLinkText(txt){navigator.clipboard.writeText(txt).then(()=>toast('در کلیپ‌بورد کپی شد')).catch(()=>toast('کپی ناموفق',true))}
+function copyLinkText(txt){navigator.clipboard.writeText(txt).then(()=>toast(lang==='fa'?'در کلیپ‌بورد کپی شد':'Copied to clipboard')).catch(()=>toast('کپی ناموفق',true))}
 function showQRText(txt){if(!txt)return;const box=document.querySelector('.qr-box');$('#qr-img').src='https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='+encodeURIComponent(txt);$('#qr-modal').classList.add('show');}
 function downloadQR(){const img=$('#qr-img');if(!img.src)return;const a=document.createElement('a');a.href=img.src;a.download='ren-qr.png';a.click()}
 async function copySubLink(uid){
@@ -1300,14 +1360,14 @@ async function copySubLink(uid){
     const domain=location.host;
     const subUrl=`https://${domain}/sub/${uid}`;
     await navigator.clipboard.writeText(subUrl);
-    toast('لینک سابسکریپشن کپی شد');
+    toast(lang==='fa'?'لینک سابسکریپشن کپی شد':'Subscription link copied');
   }catch(e){toast('کپی ناموفق',true)}
 }
 
 async function changePassword(){
   const cur=$('#cur-pw').value;const nw=$('#new-pw').value;
-  if(!cur||!nw){toast('Fill all fields',true);return;}
-  try{const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Error');}toast('بروزرسانی شد');$('#cur-pw').value='';$('#new-pw').value='';}catch(e){toast(e.message,true)}
+  if(!cur||!nw){toast(lang==='fa'?'لطفا تمام فیلدها را پر کنید':'Fill all fields',true);return;}
+  try{const r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Error');}toast(lang==='fa'?'بروزرسانی شد':'Updated');$('#cur-pw').value='';$('#new-pw').value='';}catch(e){toast(e.message,true)}
 }
 
 applyTheme(theme);setLang(lang);
@@ -1328,14 +1388,14 @@ async function loadAddresses(){
 
 function renderAddresses(){
   const list=$('#address-list');if(!list)return;
-  if(!allAddresses.length){list.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No addresses added</div>';return;}
+  if(!allAddresses.length){list.innerHTML=`<div style="color:var(--text3);font-size:12px;padding:8px 0">${lang==='fa'?'هیچ آی‌پی اضافه نشده است':'No addresses added'}</div>`;return;}
   list.innerHTML=allAddresses.map((a,i)=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:14px">🌐</span>
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(a)}</div>
-          <div style="font-size:10px;color:var(--text3)">Address #${i+1}</div>
+          <div style="font-size:10px;color:var(--text3)">${lang==='fa'?'آدرس شماره':'Address #'} ${i+1}</div>
         </div>
       </div>
       <button class="btn btn-danger btn-sm" onclick="deleteAddress(${i})" style="padding:4px 10px">x</button>
@@ -1343,11 +1403,11 @@ function renderAddresses(){
   `).join('');
 }
 
-function showAddModal(){$('#new-address').value='';$('#add-address-modal').classList.add('show')}
+function showAddModal(){const ids=["new-label","new-limit","new-maxconn","new-addresses"];ids.forEach(i=>{const e=document.getElementById(i);if(e)e.value=""});document.getElementById("add-modal").classList.add("show");}
 
 async function addAddresses(){
   const text=$('#new-address').value.trim();
-  if(!text){toast('Enter at least one IP or domain',true);return;}
+  if(!text){toast(lang==='fa'?'حداقل یک آی‌پی یا دامنه وارد کنید':'Enter at least one IP or domain',true);return;}
   const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
   let added=0;let errors=0;
   for(const addr of lines){
@@ -1357,17 +1417,17 @@ async function addAddresses(){
       if(r.ok)added++;else errors++;
     }catch(e){errors++;}
   }
-  if(added>0)toast(`Added ${added} address(es)`);
+  if(added>0)toast(lang==='fa'?`تعداد ${added} آدرس اضافه شد`:`Added ${added} address(es)`);
   if(errors>0)toast(`${errors} failed`,true);
   if(added>0){$('#add-address-modal').classList.remove('show');await loadAddresses();}
 }
 
 async function deleteAddress(index){
-  if(!confirm('Delete this address?'))return;
+  if(!confirm(lang==='fa'?'آیا از حذف این آدرس اطمینان دارید؟':'Delete this address?'))return;
   try{
     const r=await fetch(`/api/addresses/${index}`,{method:'DELETE'});
     if(!r.ok)throw new Error();
-    toast('حذف شد');
+    toast(lang==='fa'?'حذف شد':'Deleted');
     await loadAddresses();
   }catch(e){toast('Error',true)}
 }
@@ -1398,8 +1458,6 @@ function updateChart(){
   trafficChart.data.labels=labels;trafficChart.data.datasets[0].data=data;
   trafficChart.update();
 }
-
-function showAddModal(){const ids=["new-label","new-limit","new-maxconn","new-addresses"];ids.forEach(i=>{const e=document.getElementById(i);if(e)e.value=""});document.getElementById("add-modal").classList.add("show");}
 </script>
 </body>
 </html>"""
